@@ -192,6 +192,10 @@ class OSDaR2_KITTY_Converter(object):
                 return key
         
         return None
+    
+    ########################################################
+    # Main functions
+    ########################################################
 
     def convert(self):
         """Convert action."""
@@ -328,7 +332,6 @@ class OSDaR2_KITTY_Converter(object):
         # ---- Imapges sweeps ----
         frame_info['image_sweeps'] = []
 
-
         # ---- Annotations ----
         instances = []
         objects = frame_dict['objects']
@@ -344,38 +347,49 @@ class OSDaR2_KITTY_Converter(object):
         
             instance_dict = dict()
 
+            # TODO: Check if we can actually have bbox if we only have lidar or whether there always is a bbox, even without lidar
             if 'bbox' in obj_dict['object_data'].keys():
                 avaialble_views = []
                 # TODO: Consider whcih boundingbox we are taking.
                 for _bbox in obj_dict['object_data']['bbox']:
                     avaialble_views.append(_bbox['coordinate_system'])
-            
-                if list(set(avaialble_views) & set(self.camera_sensor_list)) == 0:
+
+                sensors_for_consideration = list(set(avaialble_views) & set(self.camera_sensor_list))            
+                if sensors_for_consideration:
+
+                    optimal_sensor_key = sensors_for_consideration[0]
+
+                    if len(sensors_for_consideration) > 1:
+                        optimal_sensor_key = self.find_optimal_sensor_key(sensors_for_consideration, obj_dict)
+
+                    instance_dict['camera_id'] = optimal_sensor_key
                     
-                    # But now we first have to check which camera view we rely on
-
-                    optimal_sensor_key = self.find_optimal_sensor_key()
-
-                    bbox_xywh = obj_dict['object_data']['bbox']['val']
-                    instance_dict['bbox'] = self.x1y1x2y2_to_xywh(bbox_xywh)
-                    instance_dict['bbox_label'] = mapped_object_key
+                    # Optimal sensor key val
+                    for _bbox in obj_dict['object_data']['bbox']:
+                        if _bbox['coordinate_system'] == optimal_sensor_key:
+                            bbox_xywh = _bbox['val']
+                            instance_dict['bbox'] = self.x1y1x2y2_to_xywh(bbox_xywh)
+                            instance_dict['bbox_label'] = mapped_object_key
             else:
                 # Ignore if no bbox is present
                 instance_dict['label'] = -1
 
+            # Luckily, every object has only one cuboid
             if 'cuboid' in obj_dict['object_data'].keys():
                 osdar_bbox3d = obj_dict['object_data']['cuboid']['val']
                 instance_dict['bbox_3d'] = self.osdarbbox3d_to_kittibbox3d(osdar_bbox3d)
                 instance_dict['bbox_label_3d'] = mapped_object_key
+                # TODO: Look at concrete description here
+                instance_dict['num_lidar_pts'] = self.count_lidar_points_in_bbox_3d(osdar_bbox3d)
             else:
                 # Ignore if no cuboid is present
                 instance_dict['bbox_label_3d'] = -1
 
             # TODO: Here we will probabily need to count the number of lidar points inside the bounding box...
-            if 'vec' in obj_dict['object_data'].keys():
+            # if 'vec' in obj_dict['object_data'].keys():
                 instance_dict['num_lidar_pts'] = len(obj_dict['object_data']['vec']['val'])
-        
-            instance_dict['camera_id'] = None
+
+            
             instance_dict['group_id'] = None
 
             instances.append(instance_dict)
@@ -389,11 +403,36 @@ class OSDaR2_KITTY_Converter(object):
         # ---- Camera instances ----
         frame_info['cam_instances']
 
-    def find_optimal_sensor_key():
+    def count_lidar_points_in_bbox_3d(self, osdar_bbox3d):
         """
-            Find the optimal sensor key for a given object.
+            Count the number of lidar points that are inside a 3D bounding box.
         """
         raise NotImplementedError
+
+    def find_optimal_sensor_key(self, label_file, sensors_for_consideration, obj_dict):
+        """
+            Find the optimal sensor key for a given object, i.e. the sensor that has the best view on the object.
+        """
+        
+        optimal_sensor_key = None
+        optimal_distance_to_center = 1000000
+
+        for _bbox in obj_dict['object_data']['bbox']:
+            if _bbox['coordinate_system'] in sensors_for_consideration:
+                val = _bbox['val']
+                # Calculate distance to the center of the image
+                image_height = label_file["openlabel"]['streams'][_bbox['coordinate_system']]['stream_properties']['intrinsics_pinhole']['height_px']
+                image_width = label_file["openlabel"]['streams'][_bbox['coordinate_system']]['stream_properties']['intrinsics_pinhole']['width_px']
+                distance_to_center = np.sqrt((val[0] - image_width / 2) ** 2 + (val[1] - image_height / 2) ** 2)
+
+                if distance_to_center < optimal_distance_to_center:
+                    optimal_sensor_key = _bbox['coordinate_system']
+                    optimal_distance_to_center = distance_to_center
+
+        assert optimal_sensor_key is not None, 'No optimal sensor key found'
+
+        return optimal_sensor_key
+
 
     def create_homogenous_matrix(self, rotation, translation):
         """
