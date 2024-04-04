@@ -4,9 +4,9 @@ import os
 import os.path as osp
 import sys
 import copy
-import utils
 import json
-import pypcd
+from pypcd import pypcd
+import shutil
 import glob
 import random
 import argparse
@@ -18,7 +18,6 @@ import numpy as np
 
 import mmengine
 import numpy as np
-import tensorflow as tf
 from mmengine import print_log
 from mmdet3d.datasets.convert_utils import post_process_coords
 from mmdet3d.structures import Box3DMode, LiDARInstance3DBoxes, points_cam2img
@@ -65,6 +64,7 @@ class OSDaR2_KITTY_Converter(object):
         ├── configs
         ├── data
         |   ├── osdar23
+        |   |   ├── orig
         |   |   ├── ImageSets
                     // Contains the data split into train, val, test, and test_cam_only
         |   |   |   ├── train.txt
@@ -80,10 +80,12 @@ class OSDaR2_KITTY_Converter(object):
                     // Not even required for just training in lidar points
 
         """
-        
+    
+        self.load_dir = load_dir # Should point to the 'osdar23' folder in the 'data' directory
+        self.save_dir = save_dir # Should point to the 'osdar23' folder in the 'data' directory
+        # Assert identical save and load directories
+        assert self.load_dir == self.save_dir, 'The load and save directories must be identical for this operation'
 
-        self.load_dir = load_dir
-        self.save_dir = save_dir
         self.prefix = prefix
         self.workers = int(workers)
         self.test_mode = test_mode
@@ -92,17 +94,12 @@ class OSDaR2_KITTY_Converter(object):
         self.save_cam_instances = save_cam_instances
         self.info_prefix = info_prefix
         self.max_sweeps = max_sweeps
-        self.split = split
-        
-        # No idea what this does
-        if int(tf.__version__.split('.')[0]) < 2:
-            tf.enable_eager_execution()
+
+        self.train_partition = 0.8
+        self.val_partition = 0.2
 
         # self.camera_sensor_list = ['rgb_center', 'rgb_left', 'rgb_right']
         self.lidar_sensor_list = ['lidar']
-        
-        # Classes of the underlying dataset to be considered
-        # self.class_names = ['CAR', 'PEDESTRIAN', 'CYCLIST']
 
         self.OSDAR23_CLASSES = ['person',
                                 'crowd',
@@ -129,32 +126,34 @@ class OSDaR2_KITTY_Converter(object):
         # Mapping of the OSDAR classes into the classes we want to consider
         # Hint: Transition and switch are not considered since they are not 3D bounding box labeled in the LiDAR data
         self.class_names = {
-            'PEDESTRIAN': ['person', 'crowd', 'wheelchair', 'animal', 'group_of_animals'],
+            'PEDESTRIAN': ['person', 'crowd'],
             'VEHICLE': ['train', 'wagons', 'street_vehicle'],
-            'CYCLIST': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            'OBSTACLE': ['track', 'cantenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke']
+            'BYCICLE': ['bicycle', 'group_of_bicycles']
         }
 
         self.ensure_mapping_consistency(self.OSDAR23_CLASSES, self.class_names)
 
         # Mapping of the different sets to the corresponding info files
-        self.info_map = {
-            'training': '_infos_train.pkl',
-            'validation': '_infos_val.pkl',
-            'testing': '_infos_test.pkl',
-            'testing_3d_camera_only_detection': '_infos_test_cam_only.pkl'
-        }
+        # self.info_map = {
+        #     'training': '_infos_train.pkl',
+        #     'validation': '_infos_val.pkl',
+        #     'testing': '_infos_test.pkl',
+        #     'testing_3d_camera_only_detection': '_infos_test_cam_only.pkl'
+        # }
 
         self.filter_empty_3dboxes = True
         self.filter_no_label_zone_points = True
         self.save_track_id = False
 
-        self.image_dir = osp.join(self.save_dir, 'image')
-        self.lidar_dir = osp.join(self.save_dir, 'velodyne')
+        # self.image_dir = osp.join(self.save_dir, 'image')
+        self.lidar_dir = osp.join(self.save_dir, 'points')
         self.sets_dir = osp.join(self.save_dir, 'ImageSets')
+        self.labels_dir = osp.join(self.save_dir, 'labels')
 
         # Check if there are directories or if they need to be created
-        mmengine.mkdir_or_exist(self.image_dir)
+        mmengine.mkdir_or_exist(self.lidar_dir)
+        mmengine.mkdir_or_exist(self.sets_dir)
+        mmengine.mkdir_or_exist(self.labels_dir)
         
     ########################################################
     # Helper functions
@@ -237,283 +236,123 @@ class OSDaR2_KITTY_Converter(object):
     def convert(self):
         """Convert action."""
 
-        print_log(f'Start converting {self.split} set...', logger='current')
+        print_log('Start converting OSDaR23 dataset to KITTI format', logger='current')
 
-        # All folders in the load directory are considered scenes
-        scene_folders = os.listdir(self.load_dir)
+        # All folders in the load directory are considered scenes, add orig_folder to the load directory
+        self.orig_folder = osp.join(self.load_dir, 'orig')
+        scene_folders = os.listdir(self.orig_folder)
 
         if self.workers == 0:
-            data_infos = mmengine.track_progress(self.convert_scene,
-                                                 scene_folders)
+            mmengine.track_progress(self.convert_scene, scene_folders)
         else:
-            data_infos = mmengine.track_parallel_progress(
-                self.convert_scene, scene_folders, self.workers)
-            
-        data_list = []
-        for data_info in data_infos:
-            data_list.extend(data_info)
-        metainfo = dict()
-        metainfo['dataset'] = 'osdar23'
-        metainfo['version'] = 'osdar23_v1'
-        metainfo['info_version'] = 'mmdet3d_v1.4'
-
-        osdar_infos = dict(data_list=data_list, metainfo=metainfo)
-        filenames = osp.join(
-            osp.dirname(self.save_dir),
-            f'{self.info_prefix + self.info_map[self.split]}')
-        print_log(f'Saving {self.split} dataset infos into {filenames}')
-        mmengine.dump(osdar_infos, filenames)
+            mmengine.track_parallel_progress(self.convert_scene, scene_folders, self.workers)
 
     def convert_scene(self, scene_folder):
         """
-            OSDaR23 dataset comes in folders folders that contain all the information on a single scene. 
-
-            Adapted form the 'convert_one' function in the 'Waymo2KITTIConverter' class in the 'waymo2kitti_converter.py' file.
+            OSDaR23 dataset comes in folders that contain all the information on a single scene. 
         """
         
         print_log(f'Converting scene {scene_folder}...', logger='current')
 
         # Access the scene label file (only json file in the scene folder)
-        label_file_path = osp.join(self.load_dir, scene_folder, f'{scene_folder}_labels.json')
+        label_file_path = osp.join(self.orig_folder, scene_folder, f'{scene_folder}_labels.json')
         label_file = json.load(open(label_file_path, 'r'))
-        _frames = label_file["openlabel"]['frames']
-
-        # Copy the image files to the correct location
-        for frame_key, frame_dict in _frames.items():
-            image_uri = frame_dict['frame_properties']['streams'][self.camera_sensor_list[0]]['uri']
-
-            # Copy the image file to the correct location
-            image_path = osp.join(self.load_dir, scene_folder, image_uri)
-            image_save_path = osp.join(self.image_dir, f'{scene_folder.split("/")[0]}_{image_uri.split("/")[-1]}')
-            os.system(f'cp {image_path} {image_save_path}')
-
-        file_infos = [] # List of all infos (format: dict) for each frame contained in the scene
-
-        # Copy the lidar files to the correct location
-        for frame_key, frame_dict in _frames.items():
-            lidar_pcd_uri = frame_dict['frame_properties']['streams'][self.lidar_sensor_list[0]]['uri']
-
-            _pc_xyz = self.reformat_pc(lidar_pcd_uri)
-
-            lidar_filename = lidar_pcd_uri.split("/")[-1]
-
-            lidar_bin_outpath = osp.join(self.lidar_dir, f'{scene_folder.split("/")[0]}_{lidar_pcd_uri.split("/")[-1].replace(".pcd", ".bin")}')
-
-            # Save the lidar file as bin
-            pypcd.save_point_cloud_bin(_pc_xyz, lidar_bin_outpath)
-
-            frame_info = self.create_frame_info_file(scene_folder, label_file, frame_key, frame_dict, lidar_filename)
-            file_infos.append(frame_info)
-                                        
-        return file_infos
-    
-    def create_frame_info_file(self, scene_folder, label_file, frame_key, frame_dict, lidar_filename):
-        """
-            Training is based on .pkl files that contain the training information of each frame.
-
-            See detailed documentation: https://mmdetection3d.readthedocs.io/en/latest/advanced_guides/datasets/waymo.html 
-        """
-        frame_info = dict()
-        cam_info = dict()
-
-        frame_info['sample_idx'] = f'{frame_key}_{frame_dict["frame_properties"]["timestamp"]}'
-        frame_info['timestamp'] = frame_dict['frame_properties']['timestamp']
-        frame_info['ego2global'] = np.eye(4).tolist() # TODO: Check if this is correct
-        frame_info['context_name'] = scene_folder   
-
-        # ---- Lidar points ----
-        frame_info['lidar_points'] = {
-            'lidar_path': lidar_filename,
-            'num_pts_feats': 4
-        }
+        frames_dict_keys = list(label_file["openlabel"]['frames'].keys())
         
-        # ---- Lidar sweeps ----
-        # NOTE: The OSDaR23 dataset used 3 lidar sensors with different ranges and merges them. perhaps, we will need to eliminate the points in certain ranges.
-        # TODO: For now, we will just consider the current LiDAR points as the sweep.
-        frame_info['lidar_sweeps'] = []
-        current_frame_sweep_dict = dict()
-        current_frame_sweep_dict['lidar_points']['lidar_path'] = lidar_filename
-        current_frame_sweep_dict['ego2global'] = frame_info['ego2global']
-        current_frame_sweep_dict['timestamp'] = frame_dict['frame_properties']['timestamp']
-        frame_info['lidar_sweeps'].append(current_frame_sweep_dict)
+        # Available lidar frames
+        lidar_path = osp.join(self.orig_folder, scene_folder, 'lidar')
+        lidar_files_frame_keys = [str(int(file[:3])) for file in os.listdir(lidar_path)]
 
-        # ---- Images ----
-        frame_info['images'] = dict()
-        for sensor in self.camera_sensor_list:
-            sensor_specific_dict = dict()
+        # Find the intersection of the lidar files and the frames in the label file
+        common_frame_keys = list(set(frames_dict_keys) & set(lidar_files_frame_keys))
 
-            sensor_specific_dict['image_path'] = f'{scene_folder.split("/")[0]}_{frame_dict["frame_properties"]["streams"][sensor]["uri"].split("/")[-1]}'
-            sensor_specific_dict['height'] = frame_dict['frame_properties']['streams'][sensor]['stream_properties']['intrinsics_pinhole']['height_px']
-            sensor_specific_dict['width'] = frame_dict['frame_properties']['streams'][sensor]['stream_properties']['intrinsics_pinhole']['width_px']
-            # sensor_specific_dict['cam2img'] = None
-            # sensor_specific_dict['lidar2cam'] = None
-            # sensor_specific_dict['lidar2img'] = None
+        # Copy the lidar files to the output directory
+        self.copy_lidar_files(scene_folder, common_frame_keys, lidar_path)
 
-            frame_info['images']['CAM_' + sensor] = sensor_specific_dict
+        # Create labels
+        self.create_labels(scene_folder, common_frame_keys, label_file)
 
-        # ---- Image sweeps ----
-        frame_info['image_sweeps'] = []
-        image_sweep_dict = dict()
-        for sensor in self.camera_sensor_list:
-            sensor_specific_dict = dict()
+    def create_labels(self, scene_folder, _common_frame_keys, label_file):
 
-            sensor_specific_dict['image_path'] = f'{scene_folder.split("/")[0]}_{frame_dict["frame_properties"]["streams"][sensor]["uri"].split("/")[-1]}'
-            # sensor_specific_dict['cam2img'] = None
-            # sensor_specific_dict['lidar2cam'] = None
-            # sensor_specific_dict['lidar2img'] = None
+        out_dir = osp.join(self.save_dir, 'labels')
 
-            image_sweep_dict['CAM_' + sensor] = sensor_specific_dict
-
-        image_sweep_dict['ego2global'] = frame_info['ego2global']
-        image_sweep_dict['timestamp'] = frame_dict['frame_properties']['timestamp']
-
-        frame_info['image_sweeps'].append(image_sweep_dict)
-
-        # ---- Camera information ----
-        camera_calibs = []
-        Tr_velo_to_cams = []
-        T_osdar_ref_to_kitti_cam = np.array([[0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]])
-
-        for sensor in self.camera_sensor_list:
-            # Camera extrinsics
-            Q_cam_to_vehicle_base = label_file["openlabel"]['coordinate_systems'][sensor]['pose_wrt_parent']['quaternion']
-            T_cam_to_vehicle_base = label_file["openlabel"]['coordinate_systems'][sensor]['pose_wrt_parent']['translation']
-            R_cam_to_vehicle_base = R.from_quat(Q_cam_to_vehicle_base).as_matrix()
-            H_cam_to_vehicle_base = self.create_homogenous_matrix(R_cam_to_vehicle_base, T_cam_to_vehicle_base)
-            H_vehicle_base_to_cam = np.linalg.inv(H_cam_to_vehicle_base)
-            Tr_velo_to_cam = self.cart_to_homo(T_osdar_ref_to_kitti_cam) @ H_vehicle_base_to_cam
-            Tr_velo_to_cams.append(Tr_velo_to_cam)
-
-            # Camera intrinsics
-            camera_matrix_lst = label_file["openlabel"]['streams'][sensor]['stream_properties']['intrinsics_pinhole']['camera_matrix']
-            disto_coeff = label_file["openlabel"]['streams'][sensor]['stream_properties']['intrinsics_pinhole']['distortion_coeffs']
-
-            # Cast len 12 list into 3x4 np matrix
-            camera_calib = np.array(camera_matrix_lst).reshape(3, 4)
-            camera_calibs.append(camera_calib)
-
-            cam_infos = {
-                'height': label_file["openlabel"]['streams'][sensor]['stream_properties']['intrinsics_pinhole']['height_px'],
-                'width': label_file["openlabel"]['streams'][sensor]['stream_properties']['intrinsics_pinhole']['width_px'],
-                'lidar2cam': Tr_velo_to_cam.astype(np.float32).tolist(), # TODO adapt something wrong
-                'cam2img': camera_calib.astype(np.float32).tolist(),
-                'lidar2img': (camera_calib @ Tr_velo_to_cam).astype(np.float32).tolist()
-            }
-
-        # Add camera information to frame_info dict
-        frame_info['images'][sensor] = cam_infos
-
-        # ---- Imapges sweeps ----
-        frame_info['image_sweeps'] = []
-
-        # ---- Annotations ----
-        if not self.test_mode:
-            instances = []
-            objects = frame_dict['objects']
-            for num, (obj_key, obj_dict) in enumerate(objects.items()):
-
-                object_label = obj_dict['object_data'][0]['name'].split('_')[-1]
-
-                # TODO: There is a better way to get the object key checking the label
-                mapped_object_key = self.map_osdar23_to_training_classes(object_label)
-
-                # Don't consider any objects that are not in the classes we want to consider
-                if mapped_object_key is None:
-                    continue
+        # Check if the output directory exits
+        if not os.path.exists(out_dir):
+            raise ValueError(f'Output directory {out_dir} does not exist')
+        
+        for frame_key in _common_frame_keys:
             
-                instance_dict = dict()
+            objects_in_frame = label_file["openlabel"]['frames'][frame_key]['objects']
 
-                # TODO: Check if we can actually have bbox if we only have lidar or whether there always is a bbox, even without lidar
-                if 'bbox' in obj_dict['object_data'].keys():
-                    avaialble_views = []
-                    # TODO: Consider whcih boundingbox we are taking.
-                    for _bbox in obj_dict['object_data']['bbox']:
-                        avaialble_views.append(_bbox['coordinate_system'])
+            frame_key_name = frame_key
+            if len(frame_key) == 1:
+                frame_key_name = '00' + frame_key
+            elif len(frame_key) == 2:
+                frame_key_name = '0' + frame_key
 
-                    sensors_for_consideration = list(set(avaialble_views) & set(self.camera_sensor_list))            
-                    if sensors_for_consideration:
+            # Write the bounding box to the label file
+            out_path = osp.join(out_dir, f'{scene_folder}_{frame_key_name}.txt')
 
-                        optimal_sensor_key = sensors_for_consideration[0]
+            if osp.exists(out_path):
+                print_log(f'File {out_path} already exists', logger='current')
+                continue
 
-                        if len(sensors_for_consideration) > 1:
-                            optimal_sensor_key = self.find_optimal_sensor_key(sensors_for_consideration, obj_dict)
+            for obj_key, obj_dict in objects_in_frame.items():
+                object_data_dict = obj_dict['object_data']
 
-                        instance_dict['camera_id'] = optimal_sensor_key
-                        
-                        # Optimal sensor key val
-                        for _bbox in obj_dict['object_data']['bbox']:
-                            if _bbox['coordinate_system'] == optimal_sensor_key:
-                                bbox_xywh = _bbox['val']
-                                instance_dict['bbox'] = self.x1y1x2y2_to_xywh(bbox_xywh)
-                                instance_dict['bbox_label'] = mapped_object_key
-                else:
-                    # Ignore if no bbox is present
-                    instance_dict['label'] = -1
+                if 'cuboid' in object_data_dict:
 
-                # Luckily, every object has only one cuboid
-                if 'cuboid' in obj_dict['object_data'].keys():
-                    osdar_bbox3d = obj_dict['object_data']['cuboid']['val']
-                    instance_dict['bbox_3d'] = self.osdarbbox3d_to_kittibbox3d(osdar_bbox3d)
-                    instance_dict['bbox_label_3d'] = mapped_object_key
-                    # instance_dict['num_lidar_pts'] = self.count_lidar_points_in_bbox_3d(osdar_bbox3d)
-                else:
-                    # Ignore if no cuboid is present
-                    instance_dict['bbox_label_3d'] = -1
+                    class_name = label_file['openlabel']['objects'][obj_key]['type']
+                    projected_class_name = self.map_osdar23_to_training_classes(class_name)
 
-                # TODO: Here we will probabily need to count the number of lidar points inside the bounding box...
-                if 'vec' in obj_dict['object_data'].keys():
-                    instance_dict['num_lidar_pts'] = len(obj_dict['object_data']['vec']['val'])
+                    if projected_class_name is None:
+                        print_log(f'Class {class_name} not found in the mapping', logger='current')
+                    else:
 
-                # NOTE: Track ID are not specified in the MMDetection3D description
-                if self.save_track_id:
-                    instance_dict['track_id'] = obj_key
+                        cuboid_data = object_data_dict['cuboid']
 
-                instance_dict['group_id'] = num
+                        for cuboid in cuboid_data:
+                            bbox3d = cuboid['val']
 
-                instances.append(instance_dict)
+                            # Convert the OSDaR23 bounding box to the KITTI bounding box
+                            kitti_bbox3d = self.osdarbbox3d_to_kittibbox3d(bbox3d)
 
-        frame_info['instances'] = instances
+                            with open(out_path, 'a') as f:
+                                f.write(f'{kitti_bbox3d[0]} {kitti_bbox3d[1]} {kitti_bbox3d[2]} {kitti_bbox3d[3]} {kitti_bbox3d[4]} {kitti_bbox3d[5]} {kitti_bbox3d[6]} {projected_class_name}\n')
 
-        # ---- Camera sync instances ----
-        # frame_info['cam_sync_instances'] = None
-
-
-        # ---- Camera instances ----
-        # frame_info['cam_instances'] = None
-
-
-        return frame_info    
-
-    def count_lidar_points_in_bbox_3d(self, osdar_bbox3d):
-        """
-            Count the number of lidar points that are inside a 3D bounding box.
-        """
-        raise NotImplementedError
-
-    def find_optimal_sensor_key(self, label_file, sensors_for_consideration, obj_dict):
-        """
-            Find the optimal sensor key for a given object, i.e. the sensor that has the best view on the object.
-        """
+    def copy_lidar_files(self, scene_folder, _common_frame_keys, lidar_path):
         
-        optimal_sensor_key = None
-        optimal_distance_to_center = 1000000
+        out_dir = osp.join(self.save_dir, 'points')
 
-        for _bbox in obj_dict['object_data']['bbox']:
-            if _bbox['coordinate_system'] in sensors_for_consideration:
-                val = _bbox['val']
-                # Calculate distance to the center of the image
-                image_height = label_file["openlabel"]['streams'][_bbox['coordinate_system']]['stream_properties']['intrinsics_pinhole']['height_px']
-                image_width = label_file["openlabel"]['streams'][_bbox['coordinate_system']]['stream_properties']['intrinsics_pinhole']['width_px']
-                distance_to_center = np.sqrt((val[0] - image_width / 2) ** 2 + (val[1] - image_height / 2) ** 2)
+        # Check if the output directory exits
+        if not os.path.exists(out_dir):
+            raise ValueError(f'Output directory {out_dir} does not exist')
+        
+        available_files = os.listdir(lidar_path)
+    
+        for frame_key in _common_frame_keys:
+            # if the frame key is only 2 characters, fill up with zeros
+            if len(frame_key) == 1:
+                frame_key = '00' + frame_key
+            elif len(frame_key) == 2:
+                frame_key = '0' + frame_key    
+            
+            # Find the corresponding lidar file
+            lidar_file = [file for file in available_files if frame_key in file]
 
-                if distance_to_center < optimal_distance_to_center:
-                    optimal_sensor_key = _bbox['coordinate_system']
-                    optimal_distance_to_center = distance_to_center
+            if len(lidar_file) == 0:
+                raise ValueError(f'No lidar file found for frame {frame_key}')
+            elif len(lidar_file) > 1:
+                raise ValueError(f'Multiple lidar files found for frame {frame_key}')
+            
+            copy_path = osp.join(self.orig_folder, scene_folder, 'lidar', lidar_file[0])
+            out_path = osp.join(out_dir, f'{scene_folder}_{frame_key}.bin')
 
-        assert optimal_sensor_key is not None, 'No optimal sensor key found'
-
-        return optimal_sensor_key
-
+            if not osp.exists(out_path):
+                pc_xyzi = self.reformat_pc(copy_path)
+                pc_xyzi.tofile(out_path)
+            else:
+                print_log(f'File {out_path} already exists', logger='current')
 
     def create_homogenous_matrix(self, rotation, translation):
         """
@@ -547,9 +386,7 @@ class OSDaR2_KITTY_Converter(object):
 
     def reformat_pc(self, pcd_uri):
         """
-            Convert a pcd file to a binary file.
-
-            Adapted from the 'convert_pcd_to_bin' function in the 'Waymo2KITTIConverter' class in the 'waymo2kitti_converter.py' file.
+            Change pc format.
         """
 
         pc = pypcd.PointCloud.from_path(pcd_uri)
@@ -557,16 +394,66 @@ class OSDaR2_KITTY_Converter(object):
         np_x = (np.array(pc.pc_data['x'], dtype=np.float32)).astype(np.float32)
         np_y = (np.array(pc.pc_data['y'], dtype=np.float32)).astype(np.float32)
         np_z = (np.array(pc.pc_data['z'], dtype=np.float32)).astype(np.float32)
+        np_i = (np.array(pc.pc_data['intensity'], dtype=np.float32)).astype(np.float32)
 
-        points_32 = np.transpose(np.vstack((np_x, np_y, np_z)))
+        points_32 = np.transpose(np.vstack((np_x, np_y, np_z, np_i)))
 
-        pc_xyz = pypcd.make_xyz_point_cloud(points_32)
-
-        return pc_xyz
+        return points_32
     
-    def generate_datasplit(self, data_infos):
+    def generate_datasplit(self):
         """Generate data split."""
-        raise NotImplementedError
+
+        train_file = osp.join(self.sets_dir, 'train.txt')
+        val_file = osp.join(self.sets_dir, 'val.txt')
+        test_file = osp.join(self.sets_dir, 'test.txt')
+        trainval_file = osp.join(self.sets_dir, 'trainval.txt')
+
+        if any([osp.exists(train_file), osp.exists(val_file), osp.exists(test_file), osp.exists(trainval_file)]):
+            print_log('Data split files already exist. Did not save again. Please delete them if you want to regenerate.', logger='current')
+            return
+        
+        # labels and points folder path
+        labels_dir = osp.join(self.save_dir, 'labels')
+        points_dir = osp.join(self.save_dir, 'points')
+
+        # get all the files in the labels directory
+        label_files = os.listdir(labels_dir)
+        label_files = [file[:-4] for file in label_files if file.endswith('.txt')]
+        
+        # get all the files in the points directory
+        point_files = os.listdir(points_dir)
+        point_files = [file[:-4] for file in point_files if file.endswith('.bin')]
+
+        # Assert that all label files have corresponding point files
+        for label_file in label_files:
+            if label_file not in point_files:
+                raise ValueError(f'No point file found for label file {label_file}')
+            
+        # Shuffle the files
+        random.shuffle(point_files)
+        num_point_files = len(point_files)
+
+        # Split the files into train, val, and test
+        train_files = point_files[:int(self.train_partition * num_point_files)]
+        val_files = point_files[int(self.train_partition * num_point_files):]
+
+        # Write the files to the corresponding text files
+        with open(train_file, 'w') as f:
+            for file in train_files:
+                f.write(f'{file}\n')
+
+        with open(val_file, 'w') as f:
+            for file in val_files:
+                f.write(f'{file}\n')
+
+        with open(trainval_file, 'w') as f:
+            for file in point_files:
+                f.write(f'{file}\n')
+
+        with open(test_file, 'w') as f:
+            for file in point_files:
+                f.write(f'{file}\n')        
+
 
 if __name__ == '__main__':
 
@@ -579,3 +466,4 @@ if __name__ == '__main__':
 
     converter = OSDaR2_KITTY_Converter(args.load_dir, args.save_dir, args.prefix, args.num_proc)
     converter.convert()
+    converter.generate_datasplit()

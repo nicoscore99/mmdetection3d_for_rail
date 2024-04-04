@@ -276,7 +276,6 @@ class OSDaR2_KITTY_Converter(object):
 
             See detailed documentation: https://mmdetection3d.readthedocs.io/en/latest/advanced_guides/datasets/waymo.html 
         """
-        
         frame_info = dict()
         cam_info = dict()
 
@@ -284,22 +283,60 @@ class OSDaR2_KITTY_Converter(object):
         frame_info['timestamp'] = frame_dict['frame_properties']['timestamp']
         frame_info['ego2global'] = np.eye(4).tolist() # TODO: Check if this is correct
         frame_info['context_name'] = scene_folder   
+
+        # ---- Lidar points ----
         frame_info['lidar_points'] = {
             'lidar_path': lidar_filename,
             'num_pts_feats': 4
         }
         
         # ---- Lidar sweeps ----
+        # NOTE: The OSDaR23 dataset used 3 lidar sensors with different ranges and merges them. perhaps, we will need to eliminate the points in certain ranges.
+        # TODO: For now, we will just consider the current LiDAR points as the sweep.
         frame_info['lidar_sweeps'] = []
+        current_frame_sweep_dict = dict()
+        current_frame_sweep_dict['lidar_points']['lidar_path'] = lidar_filename
+        current_frame_sweep_dict['ego2global'] = frame_info['ego2global']
+        current_frame_sweep_dict['timestamp'] = frame_dict['frame_properties']['timestamp']
+        frame_info['lidar_sweeps'].append(current_frame_sweep_dict)
 
         # ---- Images ----
         frame_info['images'] = dict()
+        for sensor in self.camera_sensor_list:
+            sensor_specific_dict = dict()
 
+            sensor_specific_dict['image_path'] = f'{scene_folder.split("/")[0]}_{frame_dict["frame_properties"]["streams"][sensor]["uri"].split("/")[-1]}'
+            sensor_specific_dict['height'] = frame_dict['frame_properties']['streams'][sensor]['stream_properties']['intrinsics_pinhole']['height_px']
+            sensor_specific_dict['width'] = frame_dict['frame_properties']['streams'][sensor]['stream_properties']['intrinsics_pinhole']['width_px']
+            # sensor_specific_dict['cam2img'] = None
+            # sensor_specific_dict['lidar2cam'] = None
+            # sensor_specific_dict['lidar2img'] = None
+
+            frame_info['images']['CAM_' + sensor] = sensor_specific_dict
+
+        # ---- Image sweeps ----
+        frame_info['image_sweeps'] = []
+        image_sweep_dict = dict()
+        for sensor in self.camera_sensor_list:
+            sensor_specific_dict = dict()
+
+            sensor_specific_dict['image_path'] = f'{scene_folder.split("/")[0]}_{frame_dict["frame_properties"]["streams"][sensor]["uri"].split("/")[-1]}'
+            # sensor_specific_dict['cam2img'] = None
+            # sensor_specific_dict['lidar2cam'] = None
+            # sensor_specific_dict['lidar2img'] = None
+
+            image_sweep_dict['CAM_' + sensor] = sensor_specific_dict
+
+        image_sweep_dict['ego2global'] = frame_info['ego2global']
+        image_sweep_dict['timestamp'] = frame_dict['frame_properties']['timestamp']
+
+        frame_info['image_sweeps'].append(image_sweep_dict)
+
+        # ---- Camera information ----
         camera_calibs = []
         Tr_velo_to_cams = []
         T_osdar_ref_to_kitti_cam = np.array([[0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]])
 
-        # ---- Camera information ----
         for sensor in self.camera_sensor_list:
             # Camera extrinsics
             Q_cam_to_vehicle_base = label_file["openlabel"]['coordinate_systems'][sensor]['pose_wrt_parent']['quaternion']
@@ -326,82 +363,89 @@ class OSDaR2_KITTY_Converter(object):
                 'lidar2img': (camera_calib @ Tr_velo_to_cam).astype(np.float32).tolist()
             }
 
-            # Add camera information to frame_info dict
-            frame_info['images'][sensor] = cam_infos
+        # Add camera information to frame_info dict
+        frame_info['images'][sensor] = cam_infos
 
         # ---- Imapges sweeps ----
         frame_info['image_sweeps'] = []
 
         # ---- Annotations ----
-        instances = []
-        objects = frame_dict['objects']
-        for obj_key, obj_dict in objects.items():
-            object_label = obj_dict['object_data'][0]['name'].split('_')[-1]
+        if not self.test_mode:
+            instances = []
+            objects = frame_dict['objects']
+            for num, (obj_key, obj_dict) in enumerate(objects.items()):
 
-            # TODO: There is a better way to get the object key checking the label
-            mapped_object_key = self.map_osdar23_to_training_classes(object_label)
+                object_label = obj_dict['object_data'][0]['name'].split('_')[-1]
 
-            # Don't consider any objects that are not in the classes we want to consider
-            if mapped_object_key is None:
-                continue
-        
-            instance_dict = dict()
+                # TODO: There is a better way to get the object key checking the label
+                mapped_object_key = self.map_osdar23_to_training_classes(object_label)
 
-            # TODO: Check if we can actually have bbox if we only have lidar or whether there always is a bbox, even without lidar
-            if 'bbox' in obj_dict['object_data'].keys():
-                avaialble_views = []
-                # TODO: Consider whcih boundingbox we are taking.
-                for _bbox in obj_dict['object_data']['bbox']:
-                    avaialble_views.append(_bbox['coordinate_system'])
-
-                sensors_for_consideration = list(set(avaialble_views) & set(self.camera_sensor_list))            
-                if sensors_for_consideration:
-
-                    optimal_sensor_key = sensors_for_consideration[0]
-
-                    if len(sensors_for_consideration) > 1:
-                        optimal_sensor_key = self.find_optimal_sensor_key(sensors_for_consideration, obj_dict)
-
-                    instance_dict['camera_id'] = optimal_sensor_key
-                    
-                    # Optimal sensor key val
-                    for _bbox in obj_dict['object_data']['bbox']:
-                        if _bbox['coordinate_system'] == optimal_sensor_key:
-                            bbox_xywh = _bbox['val']
-                            instance_dict['bbox'] = self.x1y1x2y2_to_xywh(bbox_xywh)
-                            instance_dict['bbox_label'] = mapped_object_key
-            else:
-                # Ignore if no bbox is present
-                instance_dict['label'] = -1
-
-            # Luckily, every object has only one cuboid
-            if 'cuboid' in obj_dict['object_data'].keys():
-                osdar_bbox3d = obj_dict['object_data']['cuboid']['val']
-                instance_dict['bbox_3d'] = self.osdarbbox3d_to_kittibbox3d(osdar_bbox3d)
-                instance_dict['bbox_label_3d'] = mapped_object_key
-                # TODO: Look at concrete description here
-                instance_dict['num_lidar_pts'] = self.count_lidar_points_in_bbox_3d(osdar_bbox3d)
-            else:
-                # Ignore if no cuboid is present
-                instance_dict['bbox_label_3d'] = -1
-
-            # TODO: Here we will probabily need to count the number of lidar points inside the bounding box...
-            # if 'vec' in obj_dict['object_data'].keys():
-                instance_dict['num_lidar_pts'] = len(obj_dict['object_data']['vec']['val'])
-
+                # Don't consider any objects that are not in the classes we want to consider
+                if mapped_object_key is None:
+                    continue
             
-            instance_dict['group_id'] = None
+                instance_dict = dict()
 
-            instances.append(instance_dict)
+                # TODO: Check if we can actually have bbox if we only have lidar or whether there always is a bbox, even without lidar
+                if 'bbox' in obj_dict['object_data'].keys():
+                    avaialble_views = []
+                    # TODO: Consider whcih boundingbox we are taking.
+                    for _bbox in obj_dict['object_data']['bbox']:
+                        avaialble_views.append(_bbox['coordinate_system'])
+
+                    sensors_for_consideration = list(set(avaialble_views) & set(self.camera_sensor_list))            
+                    if sensors_for_consideration:
+
+                        optimal_sensor_key = sensors_for_consideration[0]
+
+                        if len(sensors_for_consideration) > 1:
+                            optimal_sensor_key = self.find_optimal_sensor_key(sensors_for_consideration, obj_dict)
+
+                        instance_dict['camera_id'] = optimal_sensor_key
+                        
+                        # Optimal sensor key val
+                        for _bbox in obj_dict['object_data']['bbox']:
+                            if _bbox['coordinate_system'] == optimal_sensor_key:
+                                bbox_xywh = _bbox['val']
+                                instance_dict['bbox'] = self.x1y1x2y2_to_xywh(bbox_xywh)
+                                instance_dict['bbox_label'] = mapped_object_key
+                else:
+                    # Ignore if no bbox is present
+                    instance_dict['label'] = -1
+
+                # Luckily, every object has only one cuboid
+                if 'cuboid' in obj_dict['object_data'].keys():
+                    osdar_bbox3d = obj_dict['object_data']['cuboid']['val']
+                    instance_dict['bbox_3d'] = self.osdarbbox3d_to_kittibbox3d(osdar_bbox3d)
+                    instance_dict['bbox_label_3d'] = mapped_object_key
+                    # instance_dict['num_lidar_pts'] = self.count_lidar_points_in_bbox_3d(osdar_bbox3d)
+                else:
+                    # Ignore if no cuboid is present
+                    instance_dict['bbox_label_3d'] = -1
+
+                # TODO: Here we will probabily need to count the number of lidar points inside the bounding box...
+                if 'vec' in obj_dict['object_data'].keys():
+                    instance_dict['num_lidar_pts'] = len(obj_dict['object_data']['vec']['val'])
+
+                # NOTE: Track ID are not specified in the MMDetection3D description
+                if self.save_track_id:
+                    instance_dict['track_id'] = obj_key
+
+                instance_dict['group_id'] = num
+
+                instances.append(instance_dict)
 
         frame_info['instances'] = instances
 
         # ---- Camera sync instances ----
-        frame_info['cam_sync_instances'] = []
+        # frame_info['cam_sync_instances'] = None
 
 
         # ---- Camera instances ----
-        frame_info['cam_instances']
+        # frame_info['cam_instances'] = None
+
+
+        return frame_info    
 
     def count_lidar_points_in_bbox_3d(self, osdar_bbox3d):
         """
