@@ -535,8 +535,8 @@ class Waymo2KITTI(object):
                     label.box.center_x + label.box.length / 2,
                     label.box.center_y + label.box.width / 2
                 ]
-                id_to_bbox[label.id] = bbox
-                id_to_name[label.id] = name - 1
+                id_to_bbox[label.id] = bbox # mapping the label id to bbox
+                id_to_name[label.id] = name - 1 # mapping the label id to camera name
 
         group_id = 0
         instance_infos = []

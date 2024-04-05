@@ -4,6 +4,7 @@ import os
 import os.path as osp
 import sys
 import copy
+import math
 import json
 from pypcd import pypcd
 import shutil
@@ -108,14 +109,14 @@ class OSDaR2_KITTY_Converter(object):
                                 'bicycle',
                                 'group_of_bicycles',
                                 'motorcycle',
-                                'street_vehicle',
+                                'road_vehicle',
                                 'animal',
                                 'group_of_animals',
                                 'wheelchair',
                                 'track',
                                 'transition',
                                 'switch',
-                                'cantenary_pole',
+                                'catenary_pole',
                                 'signal_pole',
                                 'signal',
                                 'signal_bridge',
@@ -126,9 +127,10 @@ class OSDaR2_KITTY_Converter(object):
         # Mapping of the OSDAR classes into the classes we want to consider
         # Hint: Transition and switch are not considered since they are not 3D bounding box labeled in the LiDAR data
         self.class_names = {
-            'PEDESTRIAN': ['person', 'crowd'],
-            'VEHICLE': ['train', 'wagons', 'street_vehicle'],
-            'BYCICLE': ['bicycle', 'group_of_bicycles']
+            'Pedestrian': ['person', 'crowd'],
+            'Vehicle': ['train', 'wagons', 'road_vehicle'],
+            'Bicycle': ['bicycle', 'group_of_bicycles'],
+            'DontCare': ['motorcycle', 'animal', 'group_of_animals', 'wheelchair', 'track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch']
         }
 
         self.ensure_mapping_consistency(self.OSDAR23_CLASSES, self.class_names)
@@ -229,6 +231,30 @@ class OSDaR2_KITTY_Converter(object):
         
         return None
     
+    def quat2eulers(self, q0:float, q1:float, q2:float, q3:float) -> tuple:
+        """
+        Compute yaw-pitch-roll Euler angles from a quaternion.
+        
+        Args
+        ----
+            q0: Scalar component of quaternion.
+            q1, q2, q3: Vector components of quaternion.
+        
+        Returns
+        -------
+            (roll, pitch, yaw) (tuple): 321 Euler angles in radians
+        """
+        roll = math.atan2(
+            2 * ((q2 * q3) + (q0 * q1)),
+            q0**2 - q1**2 - q2**2 + q3**2
+        )  # radians
+        pitch = math.asin(2 * ((q1 * q3) - (q0 * q2)))
+        yaw = math.atan2(
+            2 * ((q1 * q2) + (q0 * q3)),
+            q0**2 + q1**2 - q2**2 - q3**2
+        )
+        return (roll, pitch, yaw)
+        
     ########################################################
     # Main functions
     ########################################################
@@ -274,6 +300,14 @@ class OSDaR2_KITTY_Converter(object):
 
     def create_labels(self, scene_folder, _common_frame_keys, label_file):
 
+        # Label format taken by the MMDetection3D framework does not match exactly with the KITTI format
+        
+        # The format of the 3D bounding box in OSDaR23 is as follows:
+        # [cp_x, cp_y, cp_z, q_x, q_y, q_z, omega, d_x, d_y, d_z]
+
+        # ['name', 'truncated', 'occluded', 'alpha', 'bbox', 'dimensions', 'location', 'rotation_y', 'score', 'index', 'group_ids']
+        # with dimensions being [h, w, l] and location being [x, y, z]
+
         out_dir = osp.join(self.save_dir, 'labels')
 
         # Check if the output directory exits
@@ -306,6 +340,9 @@ class OSDaR2_KITTY_Converter(object):
                     projected_class_name = self.map_osdar23_to_training_classes(class_name)
 
                     if projected_class_name is None:
+
+                        # MMDection3D omits the class if it is called "DontCare", thus don't care about this case
+
                         print_log(f'Class {class_name} not found in the mapping', logger='current')
                     else:
 
@@ -313,12 +350,32 @@ class OSDaR2_KITTY_Converter(object):
 
                         for cuboid in cuboid_data:
                             bbox3d = cuboid['val']
+                            
+                            roll, pitch, yaw = self.quat2eulers(q0=bbox3d[6], q1=bbox3d[3], q2=bbox3d[4], q3=bbox3d[5])
+
+                            truncated = 0.0 # Not imblemented
+                            occlusion = 0 # Not implemented
+                            alpha = yaw
+                            left = -1   # Not implemented
+                            top = -1    # Not implemented
+                            right = -1  # Not implemented
+                            bottom = -1 # Not implemented
+                            height = bbox3d[9] # d_z
+                            width = bbox3d[7] # d_x
+                            length = bbox3d[8] # d_y
+                            x = bbox3d[0]
+                            y = bbox3d[1]
+                            z = bbox3d[2]
+                            rotation_y = yaw # Temporary, probably wrong since its not with respect to the camera
 
                             # Convert the OSDaR23 bounding box to the KITTI bounding box
                             kitti_bbox3d = self.osdarbbox3d_to_kittibbox3d(bbox3d)
 
                             with open(out_path, 'a') as f:
-                                f.write(f'{kitti_bbox3d[0]} {kitti_bbox3d[1]} {kitti_bbox3d[2]} {kitti_bbox3d[3]} {kitti_bbox3d[4]} {kitti_bbox3d[5]} {kitti_bbox3d[6]} {projected_class_name}\n')
+                                f.write(f'{projected_class_name} {truncated} {occlusion} {alpha} {left} {top} {right} {bottom} {height} {width} {length} {x} {y} {z} {rotation_y}\n')
+
+    def map_occlusion(self, occlusion):
+        raise NotImplementedError
 
     def copy_lidar_files(self, scene_folder, _common_frame_keys, lidar_path):
         

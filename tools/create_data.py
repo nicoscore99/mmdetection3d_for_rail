@@ -52,6 +52,44 @@ def kitti_data_prep(root_path,
         mask_anno_path='instances_train.json',
         with_mask=(version == 'mask'))
 
+def osdar_data_prep(root_path,
+                    info_prefix,
+                    version,
+                    out_dir,
+                    with_plane=False):
+    
+    """Prepare data related to OSDAR dataset.
+
+    Args:
+        root_path (str): Path of dataset root.
+        info_prefix (str): The prefix of info filenames.
+        version (str): Dataset version.
+        out_dir (str): Output directory of the groundtruth database info.
+        with_plane (bool, optional): Whether to use plane information.
+            Default: False.
+    """
+
+    kitti.create_osdar_info_file(root_path, info_prefix)
+    # Not reducing point cloud
+    # kitti.create_reduced_point_cloud(root_path, info_prefix)
+
+    info_train_path = osp.join(out_dir, f'{info_prefix}_infos_train.pkl')
+    info_val_path = osp.join(out_dir, f'{info_prefix}_infos_val.pkl')
+    info_trainval_path = osp.join(out_dir, f'{info_prefix}_infos_trainval.pkl')
+    info_test_path = osp.join(out_dir, f'{info_prefix}_infos_test.pkl')
+    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_train_path)
+    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_val_path)
+    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_trainval_path)
+    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_test_path)
+    # create_groundtruth_database(
+    #     'Osdar23Dataset',
+    #     root_path,
+    #     info_prefix,
+    #     f'{info_prefix}_infos_train.pkl',
+    #     relative_path=False,
+    #     mask_anno_path='instances_train.json',
+    #     with_mask=(version == 'mask'))
+
 
 def nuscenes_data_prep(root_path,
                        info_prefix,
@@ -330,6 +368,23 @@ if __name__ == '__main__':
                 with_mask=(args.version == 'mask'))
         else:
             kitti_data_prep(
+                root_path=args.root_path,
+                info_prefix=args.extra_tag,
+                version=args.version,
+                out_dir=args.out_dir,
+                with_plane=args.with_plane)
+    elif args.dataset == 'osdar23':
+        if args.only_gt_database:
+            create_groundtruth_database(
+                'Osdar23Dataset',
+                args.root_path,
+                args.extra_tag,
+                f'{args.extra_tag}_infos_train.pkl',
+                relative_path=False,
+                mask_anno_path='instances_train.json',
+                with_mask=(args.version == 'mask'))
+        else:
+            osdar_data_prep(
                 root_path=args.root_path,
                 info_prefix=args.extra_tag,
                 version=args.version,
