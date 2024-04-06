@@ -1,0 +1,8 @@
+obstacle_detector:
+  model_config: "roswrap/config/obstacle_detector.yaml"
+  model_path: "roswrap/config/obstacle_detector.yaml"
+  model_name: "'pointpillars_kitti-3class'"
+  pcd_topic: "/rslidar/points"
+  pub_topic: "/obstacle_detector/obstacles"
+  frequency: 10
+  publish_visualization: True
