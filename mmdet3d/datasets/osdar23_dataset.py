@@ -4,15 +4,15 @@ from typing import Callable, List, Union
 import numpy as np
 
 from mmdet3d.registry import DATASETS
-from mmdet3d.structures import CameraInstance3DBoxes
+from mmdet3d.structures import CameraInstance3DBoxes, LiDARInstance3DBoxes
 from .det3d_dataset import Det3DDataset
 
 
 @DATASETS.register_module()
-class KittiDataset(Det3DDataset):
-    r"""KITTI Dataset.
+class OSDaR23Dataset(Det3DDataset):
+    r"""OSDaR23 Dataset.
 
-    This class serves as the API for experiments on the `KITTI Dataset
+    This class serves as the API for experiments on the `OSDaR23 Dataset
     <http://www.cvlibs.net/datasets/kitti/eval_object.php?obj_benchmark=3d>`_.
 
     Args:
@@ -53,8 +53,8 @@ class KittiDataset(Det3DDataset):
     """
     # TODO: use full classes of kitti
     METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car'),
-        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
+        'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
+        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192), (197, 226, 255), (0, 60, 100)]
     }
 
     def __init__(self,
@@ -69,6 +69,8 @@ class KittiDataset(Det3DDataset):
                  test_mode: bool = False,
                  pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 0.0],
                  **kwargs) -> None:
+        
+        assert len(OSDaR23Dataset.METAINFO['classes']) == len(OSDaR23Dataset.METAINFO['palette'])
 
         self.pcd_limit_range = pcd_limit_range
         assert load_type in ('frame_based', 'mv_image_based',
@@ -161,13 +163,17 @@ class KittiDataset(Det3DDataset):
                 ann_info['depths'] = np.zeros((0), dtype=np.float32)
 
         ann_info = self._remove_dontcare(ann_info)
-        # in kitti, lidar2cam = R0_rect @ Tr_velo_to_cam
-        lidar2cam = np.array(info['images']['CAM2']['lidar2cam'])
-        # convert gt_bboxes_3d to velodyne coordinates with `lidar2cam`
+        # # in kitti, lidar2cam = R0_rect @ Tr_velo_to_cam
+        # lidar2cam = np.array(info['images']['CAM2']['lidar2cam'])
+        # # convert gt_bboxes_3d to velodyne coordinates with `lidar2cam`
 
-        # TODO: We certainly need to change this, since we have no images
-        gt_bboxes_3d = CameraInstance3DBoxes(
-            ann_info['gt_bboxes_3d']).convert_to(self.box_mode_3d,
-                                                 np.linalg.inv(lidar2cam))
+        # # TODO: We certainly need to change this, since we have no images
+        # gt_bboxes_3d = CameraInstance3DBoxes(
+        #     ann_info['gt_bboxes_3d']).convert_to(self.box_mode_3d,
+        #                                          np.linalg.inv(lidar2cam))
+        
+        gt_bboxes_3d = LiDARInstance3DBoxes(
+            ann_info['gt_bboxes_3d'])
+
         ann_info['gt_bboxes_3d'] = gt_bboxes_3d
         return ann_info

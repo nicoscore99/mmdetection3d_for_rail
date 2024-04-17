@@ -54,7 +54,6 @@ def parse_args():
 
 def build_data_cfg(config_path, aug, cfg_options):
     """Build data config for loading visualization data."""
-
     cfg = Config.fromfile(config_path)
     if cfg_options is not None:
         cfg.merge_from_dict(cfg_options)

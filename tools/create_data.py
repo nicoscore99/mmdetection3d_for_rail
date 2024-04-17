@@ -12,6 +12,7 @@ from tools.dataset_converters import semantickitti_converter
 from tools.dataset_converters.create_gt_database import (
     GTDatabaseCreater, create_groundtruth_database)
 from tools.dataset_converters.update_infos_to_v2 import update_pkl_infos
+from mmdet3d.datasets.osdar23_dataset import OSDaR23Dataset
 
 
 def kitti_data_prep(root_path,
@@ -77,18 +78,18 @@ def osdar_data_prep(root_path,
     info_val_path = osp.join(out_dir, f'{info_prefix}_infos_val.pkl')
     info_trainval_path = osp.join(out_dir, f'{info_prefix}_infos_trainval.pkl')
     info_test_path = osp.join(out_dir, f'{info_prefix}_infos_test.pkl')
-    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_train_path)
-    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_val_path)
-    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_trainval_path)
-    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_test_path)
-    # create_groundtruth_database(
-    #     'Osdar23Dataset',
-    #     root_path,
-    #     info_prefix,
-    #     f'{info_prefix}_infos_train.pkl',
-    #     relative_path=False,
-    #     mask_anno_path='instances_train.json',
-    #     with_mask=(version == 'mask'))
+    update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_train_path)
+    update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_val_path)
+    update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_trainval_path)
+    update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_test_path)
+    create_groundtruth_database(
+        'OSDaR23Dataset',
+        root_path,
+        info_prefix,
+        f'{info_prefix}_infos_train.pkl',
+        relative_path=False,
+        mask_anno_path='instances_train.json',
+        with_mask=(version == 'mask'))
 
 
 def nuscenes_data_prep(root_path,
@@ -376,7 +377,7 @@ if __name__ == '__main__':
     elif args.dataset == 'osdar23':
         if args.only_gt_database:
             create_groundtruth_database(
-                'Osdar23Dataset',
+                'OSDaR23Dataset',
                 args.root_path,
                 args.extra_tag,
                 f'{args.extra_tag}_infos_train.pkl',

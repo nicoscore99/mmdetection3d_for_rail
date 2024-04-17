@@ -24,7 +24,7 @@ from mmdet3d.datasets.convert_utils import post_process_coords
 from mmdet3d.structures import Box3DMode, LiDARInstance3DBoxes, points_cam2img
 
 
-class OSDaR2_KITTY_Converter(object):
+class OSDaR23_2_KITTI_Converter(object):
     def __init__(self,
                  load_dir,
                  save_dir,
@@ -39,7 +39,7 @@ class OSDaR2_KITTY_Converter(object):
                  split='train'):
         
         """
-        The purpose of this script is to implement the functionality to cast the OSDaR23 dataset into the KITTI format (for LIDAR-BASED 3D detection only).
+        The purpose of this script is to implement the functionality to cast the OSDaR23 dataset into the KITTI format (for LIDAR-based 3D detection only).
 
         Input format of the OSDaR23 dataset:
 
@@ -79,6 +79,9 @@ class OSDaR2_KITTY_Converter(object):
         |   |   |   ├── ...
         |   |   ├── labels
                     // Not even required for just training in lidar points
+
+        Note: It's unnecessary to already here split between train, val, and test. This script implements a functionality to generate data split files 
+        that can be defined in the config file. Training, testing and validation data will be loaded accordingly.
 
         """
     
@@ -127,10 +130,12 @@ class OSDaR2_KITTY_Converter(object):
         # Mapping of the OSDAR classes into the classes we want to consider
         # Hint: Transition and switch are not considered since they are not 3D bounding box labeled in the LiDAR data
         self.class_names = {
-            'Pedestrian': ['person', 'crowd'],
-            'Vehicle': ['train', 'wagons', 'road_vehicle'],
-            'Bicycle': ['bicycle', 'group_of_bicycles'],
-            'DontCare': ['motorcycle', 'animal', 'group_of_animals', 'wheelchair', 'track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch']
+            'pedestrian': ['person', 'crowd'],
+            'car': ['road_vehicle'],
+            'train': ['train', 'wagons'],
+            'bike': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+            'unknown': ['animal', 'group_of_animals', 'wheelchair'],
+            'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch'],
         }
 
         self.ensure_mapping_consistency(self.OSDAR23_CLASSES, self.class_names)
@@ -191,10 +196,10 @@ class OSDaR2_KITTY_Converter(object):
         cp_x, cp_y, cp_z, q_x, q_y, q_z, omega, d_x, d_y, d_z = osdar_bbox3d
 
         # Convert quaternion to rotation matrix
-        # R = R.from_quat([q_x, q_y, q_z, omega]).as_matrix()
-
+        transform = R.from_quat([q_x, q_y, q_z, omega])
+        yaw = transform.as_euler('zxy')[0]
         # Convert the OSDaR23 bounding box to the KITTI bounding box
-        kitti_bbox3d = [cp_x, cp_y, cp_z, d_z, d_x, d_y, omega]
+        kitti_bbox3d = [cp_x, cp_y, cp_z, d_z, d_x, d_y, yaw]
         return kitti_bbox3d
 
 
@@ -254,7 +259,53 @@ class OSDaR2_KITTY_Converter(object):
             q0**2 + q1**2 - q2**2 - q3**2
         )
         return (roll, pitch, yaw)
-        
+    
+    def create_homogenous_matrix(self, rotation, translation):
+        """
+            Create a homogenous matrix from a quaternion and a translation.
+        """
+        homogenous_matrix = np.eye(4)
+        homogenous_matrix[:3, :3] = rotation
+        homogenous_matrix[:3, 3] = translation
+        return homogenous_matrix
+    
+    def cart_to_homo(self, mat):
+        """Convert transformation matrix in Cartesian coordinates to
+        homogeneous format.
+
+        Args:
+            mat (np.ndarray): Transformation matrix in Cartesian.
+                The input matrix shape is 3x3 or 3x4.
+
+        Returns:
+            np.ndarray: Transformation matrix in homogeneous format.
+                The matrix shape is 4x4.
+        """
+        ret = np.eye(4)
+        if mat.shape == (3, 3):
+            ret[:3, :3] = mat
+        elif mat.shape == (3, 4):
+            ret[:3, :] = mat
+        else:
+            raise ValueError(mat.shape)
+        return ret
+
+    def reformat_pc(self, pcd_uri):
+        """
+            Change pc format.
+        """
+
+        pc = pypcd.PointCloud.from_path(pcd_uri)
+
+        np_x = (np.array(pc.pc_data['x'], dtype=np.float32)).astype(np.float32)
+        np_y = (np.array(pc.pc_data['y'], dtype=np.float32)).astype(np.float32)
+        np_z = (np.array(pc.pc_data['z'], dtype=np.float32)).astype(np.float32)
+        np_i = (np.array(pc.pc_data['intensity'], dtype=np.float32)).astype(np.float32)
+
+        points_32 = np.transpose(np.vstack((np_x, np_y, np_z, np_i)))
+
+        return points_32
+    
     ########################################################
     # Main functions
     ########################################################
@@ -411,52 +462,6 @@ class OSDaR2_KITTY_Converter(object):
             else:
                 print_log(f'File {out_path} already exists', logger='current')
 
-    def create_homogenous_matrix(self, rotation, translation):
-        """
-            Create a homogenous matrix from a quaternion and a translation.
-        """
-        homogenous_matrix = np.eye(4)
-        homogenous_matrix[:3, :3] = rotation
-        homogenous_matrix[:3, 3] = translation
-        return homogenous_matrix
-    
-    def cart_to_homo(self, mat):
-        """Convert transformation matrix in Cartesian coordinates to
-        homogeneous format.
-
-        Args:
-            mat (np.ndarray): Transformation matrix in Cartesian.
-                The input matrix shape is 3x3 or 3x4.
-
-        Returns:
-            np.ndarray: Transformation matrix in homogeneous format.
-                The matrix shape is 4x4.
-        """
-        ret = np.eye(4)
-        if mat.shape == (3, 3):
-            ret[:3, :3] = mat
-        elif mat.shape == (3, 4):
-            ret[:3, :] = mat
-        else:
-            raise ValueError(mat.shape)
-        return ret
-
-    def reformat_pc(self, pcd_uri):
-        """
-            Change pc format.
-        """
-
-        pc = pypcd.PointCloud.from_path(pcd_uri)
-
-        np_x = (np.array(pc.pc_data['x'], dtype=np.float32)).astype(np.float32)
-        np_y = (np.array(pc.pc_data['y'], dtype=np.float32)).astype(np.float32)
-        np_z = (np.array(pc.pc_data['z'], dtype=np.float32)).astype(np.float32)
-        np_i = (np.array(pc.pc_data['intensity'], dtype=np.float32)).astype(np.float32)
-
-        points_32 = np.transpose(np.vstack((np_x, np_y, np_z, np_i)))
-
-        return points_32
-    
     def generate_datasplit(self):
         """Generate data split."""
 
@@ -521,6 +526,6 @@ if __name__ == '__main__':
     parser.add_argument('--num_proc', default=1, help='Number of processes to spawn')
     args = parser.parse_args()
 
-    converter = OSDaR2_KITTY_Converter(args.load_dir, args.save_dir, args.prefix, args.num_proc)
+    converter = OSDaR23_2_KITTI_Converter(args.load_dir, args.save_dir, args.prefix, args.num_proc)
     converter.convert()
     converter.generate_datasplit()
