@@ -11,7 +11,7 @@ import shutil
 import glob
 import random
 import argparse
-import raillabel
+# import raillabel
 from io import BytesIO
 from scipy.spatial.transform import Rotation as R
 import numpy as np
@@ -335,10 +335,14 @@ class OSDaR23_2_KITTI_Converter(object):
         label_file_path = osp.join(self.orig_folder, scene_folder, f'{scene_folder}_labels.json')
         label_file = json.load(open(label_file_path, 'r'))
         frames_dict_keys = list(label_file["openlabel"]['frames'].keys())
+
+        print(f'Frames in label file: {frames_dict_keys}')
         
         # Available lidar frames
         lidar_path = osp.join(self.orig_folder, scene_folder, 'lidar')
         lidar_files_frame_keys = [str(int(file[:3])) for file in os.listdir(lidar_path)]
+
+        print(f'Frames in lidar folder: {lidar_files_frame_keys}')
 
         # Find the intersection of the lidar files and the frames in the label file
         common_frame_keys = list(set(frames_dict_keys) & set(lidar_files_frame_keys))
@@ -447,6 +451,8 @@ class OSDaR23_2_KITTI_Converter(object):
             
             # Find the corresponding lidar file
             lidar_file = [file for file in available_files if frame_key in file]
+
+            print(lidar_file)
 
             if len(lidar_file) == 0:
                 raise ValueError(f'No lidar file found for frame {frame_key}')
