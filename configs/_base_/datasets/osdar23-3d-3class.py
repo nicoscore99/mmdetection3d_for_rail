@@ -5,7 +5,6 @@ dataset_type = 'OSDaR23Dataset'
 data_root = 'data/osdar23/'
 class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
 # According to Robosense M1+ specifications (Range: 200m, Horizontal FOV: 120°)
-point_cloud_range = [0, -65, -3, 200, 65, 1]
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
 

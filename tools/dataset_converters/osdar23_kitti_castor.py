@@ -448,12 +448,14 @@ class OSDaR23_2_KITTI_Converter(object):
                 frame_key = '0' + frame_key    
             
             # Find the corresponding lidar file
-            lidar_file = [file for file in available_files if frame_key in file]
+            lidar_file = [file for file in available_files if frame_key in file[:3]]
 
             if len(lidar_file) == 0:
-                raise ValueError(f'No lidar file found for frame {frame_key}')
+                raise ValueError(f'No lidar file found for frame {frame_key} in scene {scene_folder}')
             elif len(lidar_file) > 1:
-                raise ValueError(f'Multiple lidar files found for frame {frame_key}')
+                print(_common_frame_keys)
+                print(lidar_file)
+                raise ValueError(f'Multiple lidar files found for frame {frame_key} in scene {scene_folder}')
             
             copy_path = osp.join(self.orig_folder, scene_folder, 'lidar', lidar_file[0])
             out_path = osp.join(out_dir, f'{scene_folder}_{frame_key}.bin')
