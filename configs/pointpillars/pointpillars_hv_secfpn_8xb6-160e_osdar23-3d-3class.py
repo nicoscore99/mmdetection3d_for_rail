@@ -4,8 +4,18 @@ _base_ = [
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
+_base_.visualizer.vis_backends = [
+    dict(
+        type='WandbVisBackend',
+        init_kwargs={
+            'project': 'mmdetection3d',
+            'entity': 'railsensing'
+        },
+    ),
+]
+
 dataset = dict(type='OSDaR23Dataset')
-point_cloud_range =  [0, -40, -3, 70.4, 40, 1]
+point_cloud_range =  [0, -43.2, -3, 99.20, 42.2, 1]
 # point_cloud_range = [0, -65, -3, 200, 65, 1]
 # dataset settings
 data_root = 'data/osdar23/'
@@ -130,6 +140,7 @@ train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=2)
 val_cfg = dict()
 test_cfg = dict()
 
-custom_hooks = [
-    dict(type='BenchmarkHook'),
-]
+# custom_hooks = [
+#     dict(type='WandbLoggerHook', 
+#          yaml_config_path='wandb_auth.yaml')
+# ]
