@@ -5,8 +5,8 @@ _base_ = [
 ]
 
 dataset = dict(type='OSDaR23Dataset')
-# point_cloud_range =  [0, -40, -3, 70.4, 40, 1]
-point_cloud_range = [0, -65, -3, 200, 65, 1]
+point_cloud_range =  [0, -40, -3, 70.4, 40, 1]
+# point_cloud_range = [0, -65, -3, 200, 65, 1]
 # dataset settings
 data_root = 'data/osdar23/'
 class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
@@ -19,7 +19,6 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_difficulty=[-1],
         filter_by_min_points=dict(pedestrian=5, car=5, train=5, bike=5, dontcare=5)),
     classes=class_names,
     sample_groups=dict(pedestrian=5, car=5, train=5, bike=5, dontcare=5),

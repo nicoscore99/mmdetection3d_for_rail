@@ -156,7 +156,6 @@ class DataBaseSampler(object):
         self.sampler_dict = {}
         for k, v in self.group_db_infos.items():
             self.sampler_dict[k] = BatchSampler(v, k, shuffle=True)
-        # TODO: No group_sampling currently
 
     @staticmethod
     def filter_by_difficulty(db_infos: dict, removed_difficulty: list) -> dict:
@@ -175,6 +174,12 @@ class DataBaseSampler(object):
                 info for info in dinfos
                 if info['difficulty'] not in removed_difficulty
             ]
+
+        # Print all keys that are empty after filtering
+        for key, dinfos in new_db_infos.items():
+            if len(dinfos) == 0:
+                raise ValueError(f'Warning: Filtering by difficulty removed all data for key {key}.')
+
         return new_db_infos
 
     @staticmethod
@@ -197,6 +202,12 @@ class DataBaseSampler(object):
                     if info['num_points_in_gt'] >= min_num:
                         filtered_infos.append(info)
                 db_infos[name] = filtered_infos
+
+        # Print all keys that are empty after filtering
+        for key, dinfos in db_infos.items():
+            if len(dinfos) == 0:
+                raise ValueError(f'Warning: Filtering by min points removed all data for key {key}.')
+
         return db_infos
 
     def sample_all(self,
@@ -225,6 +236,7 @@ class DataBaseSampler(object):
         """
         sampled_num_dict = {}
         sample_num_per_class = []
+
         for class_name, max_sample_num in zip(self.sample_classes,
                                               self.sample_max_nums):
             class_label = self.cat2label[class_name]
@@ -280,7 +292,7 @@ class DataBaseSampler(object):
                 s_points_list.append(s_points)
 
             gt_labels = np.array([self.cat2label[s['name']] for s in sampled],
-                                 dtype=np.long)
+                                 dtype=np.longlong)
 
             if ground_plane is not None:
                 xyz = sampled_gt_bboxes[:, :3]
