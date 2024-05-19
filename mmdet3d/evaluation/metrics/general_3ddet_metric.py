@@ -3,6 +3,9 @@ import tempfile
 from os import path as osp
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+import bbox
+import torch
+import pandas as pd
 import mmengine
 import numpy as np
 import copy
@@ -28,7 +31,7 @@ def print_dict_keys_hierarchy(d, indent_level=0):
             print_dict_keys_hierarchy(value, indent_level + 1)
 
 @METRICS.register_module()
-class General_3dDet_KITTI_Based_Metric(BaseMetric):
+class General_3dDet_Metric(BaseMetric):
     """Kitti evaluation metric.
 
     Args:
@@ -62,7 +65,7 @@ class General_3dDet_KITTI_Based_Metric(BaseMetric):
 
     def __init__(self,
                  ann_file: str,
-                 metric: Union[str, List[str]] = 'bbox',
+                 metric: Union[str, List[str]] = [''],
                  pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 0.0],
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
@@ -72,112 +75,31 @@ class General_3dDet_KITTI_Based_Metric(BaseMetric):
                  collect_device: str = 'cpu',
                  backend_args: Optional[dict] = None) -> None:
         
+        super(General_3dDet_Metric, self).__init__(collect_device=collect_device, prefix=prefix)
         self.default_prefix = 'General 3D Det metric'
-        super(General_3dDet_KITTI_Based_Metric, self).__init__(
-            collect_device=collect_device, prefix=prefix)
         self.pcd_limit_range = pcd_limit_range
         self.ann_file = ann_file
         self.pklfile_prefix = pklfile_prefix
         self.format_only = format_only
+        self.submission_prefix = submission_prefix
+        self.default_cam_key = default_cam_key
+        self.backend_args = backend_args
+
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
             'not None when format_only is True, otherwise the result files '
             'will be saved to a temp directory which will be cleaned up at '
             'the end.'
 
-        self.submission_prefix = submission_prefix
-        self.default_cam_key = default_cam_key
-        self.backend_args = backend_args
-
-        allowed_metrics = ['bbox', 'img_bbox', 'mAP', 'LET_mAP']
+        # '3d' and 'bev' stand for '3-dimensional object detction metrics' and 'bird's eye view object detection metrics'
+        allowed_metrics = ['3d', 'bev']
         self.metrics = metric if isinstance(metric, list) else [metric]
+        self.difficulty_levels = [25.0, 50.0, 70.0]
+
         for metric in self.metrics:
             if metric not in allowed_metrics:
                 raise KeyError("metric should be one of 'bbox', 'img_bbox', "
                                f'but got {metric}.')
-
-    def convert_annos_to_kitti_annos(self, data_infos: dict) -> List[dict]:
-        """Convert loading annotations to Kitti annotations.
-
-        Args:
-            data_infos (dict): Data infos including metainfo and annotations
-                loaded from ann_file.
-
-        Returns:
-            List[dict]: List of Kitti annotations.
-        """
-        data_annos = data_infos['data_list']
-        if not self.format_only:
-            cat2label = data_infos['metainfo']['categories']
-            label2cat = dict((v, k) for (k, v) in cat2label.items())
-            assert 'instances' in data_annos[0]
-            for i, annos in enumerate(data_annos):
-                if len(annos['instances']) == 0:
-                    kitti_annos = {
-                        'name': np.array([]),
-                        'truncated': np.array([]),
-                        'occluded': np.array([]),
-                        'alpha': np.array([]),
-                        'bbox': np.zeros([0, 4]),
-                        'dimensions': np.zeros([0, 3]),
-                        'location': np.zeros([0, 3]),
-                        'rotation_y': np.array([]),
-                        'score': np.array([]),
-                    }
-                else:
-                    kitti_annos = {
-                        'name': [],
-                        'truncated': [],
-                        'occluded': [],
-                        'alpha': [],
-                        'bbox': [],
-                        'location': [],
-                        'dimensions': [],
-                        'rotation_y': [],
-                        'score': []
-                    }
-                    for instance in annos['instances']:
-                        label = instance['bbox_label']
-                        kitti_annos['name'].append(label2cat[label])
-                        kitti_annos['truncated'].append(instance['truncated'])
-                        kitti_annos['occluded'].append(instance['occluded'])
-                        kitti_annos['alpha'].append(instance['alpha'])
-                        kitti_annos['bbox'].append(instance['bbox'])
-                        kitti_annos['location'].append(instance['bbox_3d'][:3])
-                        kitti_annos['dimensions'].append(
-                            instance['bbox_3d'][3:6])
-                        kitti_annos['rotation_y'].append(
-                            instance['bbox_3d'][6]) # NOTE: Is this working?
-                        kitti_annos['score'].append(instance['score'])
-                    for name in kitti_annos:
-                        kitti_annos[name] = np.array(kitti_annos[name])
-                data_annos[i]['kitti_annos'] = kitti_annos
-        return data_annos
-
-    def process(self, data_batch: dict, data_samples: Sequence[dict]) -> None:
-        """Process one batch of data samples and predictions.
-
-        The processed results should be stored in ``self.results``, which will
-        be used to compute the metrics when all batches have been processed.
-
-        Args:
-            data_batch (dict): A batch of data from the dataloader.
-            data_samples (Sequence[dict]): A batch of outputs from the model.
-        """
-
-        for data_sample in data_samples:
-            result = dict()
-            pred_3d = data_sample['pred_instances_3d']
-            pred_2d = data_sample['pred_instances']
-            for attr_name in pred_3d:
-                pred_3d[attr_name] = pred_3d[attr_name].to('cpu')
-            result['pred_instances_3d'] = pred_3d
-            for attr_name in pred_2d:
-                pred_2d[attr_name] = pred_2d[attr_name].to('cpu')
-            result['pred_instances'] = pred_2d
-            sample_idx = data_sample['sample_idx']
-            result['sample_idx'] = sample_idx
-            self.results.append(result)
 
     def compute_metrics(self, results: List[dict]) -> Dict[str, float]:
         """Compute the metrics from processed results.
@@ -190,511 +112,406 @@ class General_3dDet_KITTI_Based_Metric(BaseMetric):
             the metrics, and the values are corresponding results.
         """
         logger: MMLogger = MMLogger.get_current_instance()
-        self.classes = self.dataset_meta['classes']
+
+        """
+        Required format for the conversion:
+        {'_sample_idx_': {
+            'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
+                                [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
+                                [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
+                                [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
+                                [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
+                                [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
+            'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
+            'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
+        }
+        """
+
+        # self.classes = self.dataset_meta['classes']
 
         # load annotations
-        pkl_infos = load(self.ann_file, backend_args=self.backend_args)
+        ann_file = load(self.ann_file, backend_args=self.backend_args)
+        gt_annos = self.convert_from_ann_file(ann_file)
+        dt_annos = self.convert_from_results(results)
 
-        # data_infos contains the ground truth in a KITTI format
-        self.data_infos = self.convert_annos_to_kitti_annos(pkl_infos)
-        
-        result_dict, tmp_dir = self.format_results(
-            results,
-            pklfile_prefix=self.pklfile_prefix,
-            submission_prefix=self.submission_prefix,
-            classes=self.classes)
+        # Assert that the keys of the gt_annos and dt_annos are the same
+        assert gt_annos.keys() == dt_annos.keys(), "The keys of the gt_annos and dt_annos are not the same."
+
+        gt_annos_valid = self.filter_valid_annos(gt_annos)
+        dt_annos_valid = self.filter_valid_annos(dt_annos)
 
         metric_dict = {}
 
-        if self.format_only:
-            logger.info(
-                f'results are saved in {osp.dirname(self.submission_prefix)}')
-            return metric_dict
+        # for metric in self.metrics:
+        #     ap_dict = self.kitti_evaluate(
+        #         result_dict,
+        #         gt_annos,
+        #         metric=metric,
+        #         logger=logger,
+        #         classes=self.classes)
+        #     for result in ap_dict:
+        #         metric_dict[result] = ap_dict[result]
 
-        gt_annos = [
-            self.data_infos[result['sample_idx']]['kitti_annos']
-            for result in results
-        ]
+        if 'bev' in self.metrics:
+            bev_dict = dict()
+            bev_metrics = BevMetrics(gt_annos_valid, dt_annos_valid)
+            bev_metrics.generate_correspondence_matrices()
+            bev_metrics.generate_prec_rec_table()
 
-        for metric in self.metrics:
-            ap_dict = self.kitti_evaluate(
-                result_dict,
-                gt_annos,
-                metric=metric,
-                logger=logger,
-                classes=self.classes)
-            for result in ap_dict:
-                metric_dict[result] = ap_dict[result]
+            for difficulty in self.difficulty_levels:
+                bev_dict[f'bev_{difficulty}'] = bev_metrics.calculate_pascal_voc_ap_by_aoc(difficulty)
 
-        if tmp_dir is not None:
-            tmp_dir.cleanup()
         return metric_dict
-
-    def kitti_evaluate(self,
-                       results_dict: dict,
-                       gt_annos: List[dict],
-                       metric: Optional[str] = None,
-                       classes: Optional[List[str]] = None,
-                       logger: Optional[MMLogger] = None) -> Dict[str, float]:
-        """Evaluation in KITTI protocol.
+    
+    def convert_from_ann_file(self, ann_file: dict) -> dict:
+        """
+        Convert the annotations from the ann_file to the required format for the evaluation.
 
         Args:
-            results_dict (dict): Formatted results of the dataset.
-            gt_annos (List[dict]): Contain gt information of each sample.
-            metric (str, optional): Metrics to be evaluated. Defaults to None.
-            classes (List[str], optional): A list of class name.
-                Defaults to None.
-            logger (MMLogger, optional): Logger used for printing related
-                information during evaluation. Defaults to None.
+            ann_file (dict): The loaded annotation file.
 
         Returns:
-            Dict[str, float]: Results of each evaluation metric.
+            dict: The converted annotations.
+
+        The ann_file has the following format:
+        {'instances': [{'alpha': 0.0,
+                'bbox': [-1.0, -1.0, -1.0, -1.0],
+                'bbox_3d': [139.85,
+                            14.59,
+                            1.0699999999999998,
+                            0.98,
+                            1.0,
+                            1.8,
+                            0.0],
+                'bbox_label': 0,
+                'bbox_label_3d': 0,
+                'difficulty': -1,
+                'group_id': 0,
+                'index': 0,
+                'occluded': 0,
+                'score': 0.0,
+                'truncated': 0.0},
+                {'alpha': 0.0,
+                'bbox': [-1.0, -1.0, -1.0, -1.0],
+                'bbox_3d': [230.78,
+                            -4.51,
+                            -0.08999999999999986,
+                            1.6,
+                            1.3,
+                            11.9,
+                            0.0],
+                'bbox_label': 5,
+                'bbox_label_3d': 5,
+                'difficulty': -1,
+                'group_id': 8,
+                'index': 8,
+                'occluded': 0,
+                'score': 0.0,
+                'truncated': 0.0}],
+         'lidar_points': {'lidar_path': '3_fire_site_3.1_083.bin',
+                          'num_pts_feats': 4},
+         'sample_idx': '083.bin'},
+
+        Required format for the conversion:
+        {'_sample_idx_': {
+            'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
+                                [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
+                                [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
+                                [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
+                                [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
+                                [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
+            'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
+            'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
+        }
         """
-        ap_dict = dict()
-        for name in results_dict:
-            if name == 'pred_instances' or metric == 'img_bbox':
-                eval_types = ['bbox']
-            else:
-                # delierately leave away bbox
-                # eval_types = ['bbox', 'bev', '3d']
-                eval_types = ['bev', '3d']
-            ap_result_str, ap_dict_ = eval_pc_3d_generalized.generalized_3d_eval(
-                gt_annos, results_dict[name], classes, eval_types=eval_types)
-            for ap_type, ap in ap_dict_.items():
-                ap_dict[f'{name}/{ap_type}'] = float(f'{ap:.4f}')
-
-            print_log(f'Results of {name}:\n' + ap_result_str, logger=logger)
-
-        return ap_dict
-
-    def format_results(
-        self,
-        results: List[dict],
-        pklfile_prefix: Optional[str] = None,
-        submission_prefix: Optional[str] = None,
-        classes: Optional[List[str]] = None
-    ) -> Tuple[dict, Union[tempfile.TemporaryDirectory, None]]:
-        """Format the results to pkl file.
-
-        Args:
-            results (List[dict]): Testing results of the dataset.
-            pklfile_prefix (str, optional): The prefix of pkl files. It
-                includes the file path and the prefix of filename, e.g.,
-                "a/b/prefix". If not specified, a temp file will be created.
-                Defaults to None.
-            submission_prefix (str, optional): The prefix of submitted files.
-                It includes the file path and the prefix of filename, e.g.,
-                "a/b/prefix". If not specified, a temp file will be created.
-                Defaults to None.
-            classes (List[str], optional): A list of class name.
-                Defaults to None.
-
-        Returns:
-            tuple: (result_dict, tmp_dir), result_dict is a dict containing the
-            formatted result, tmp_dir is the temporal directory created for
-            saving json files when jsonfile_prefix is not specified.
-        """
-
-        # for result in results:
-        #     print_dict_keys_hierarchy(result)
-
-        if pklfile_prefix is None:
-            tmp_dir = tempfile.TemporaryDirectory()
-            pklfile_prefix = osp.join(tmp_dir.name, 'results')
-        else:
-            tmp_dir = None
-        result_dict = dict()
-        sample_idx_list = [result['sample_idx'] for result in results]
-        for name in results[0]:
-            if submission_prefix is not None:
-                submission_prefix_ = osp.join(submission_prefix, name)
-            else:
-                submission_prefix_ = None
-            if pklfile_prefix is not None:
-                pklfile_prefix_ = osp.join(pklfile_prefix, name) + '.pkl'
-            else:
-                pklfile_prefix_ = None
-
-            print(f"Results: {results[0]}")
-            if 'pred_instances' in name and '3d' in name and name[
-                    0] != '_' and results[0][name]:
-                net_outputs = [result[name] for result in results]
-                result_list_ = self.bbox2result_kitti(net_outputs,
-                                                      sample_idx_list, classes,
-                                                      pklfile_prefix_,
-                                                      submission_prefix_)
-                result_dict[name] = result_list_
-            # elif name == 'pred_instances' and name[0] != '_' and results[0][
-            #         name]:
-            #     net_outputs = [result[name] for result in results]
-            #     result_list_ = self.bbox2result_kitti2d(
-            #         net_outputs, sample_idx_list, classes, pklfile_prefix_,
-            #         submission_prefix_)
-            #     result_dict[name] = result_list_
-            # else:
-            #     raise NotImplementedError(
-            #         f'This case is unsuported. General_3dDet_KITTI_Based_Metric cannot evaluate 2d metrics.'
-            #     )
-
-        return result_dict, tmp_dir
-
-    def bbox2result_kitti(
-            self,
-            net_outputs: List[dict],
-            sample_idx_list: List[int],
-            class_names: List[str],
-            pklfile_prefix: Optional[str] = None,
-            submission_prefix: Optional[str] = None) -> List[dict]:
-        """Convert 3D detection results to kitti format for evaluation and test
-        submission.
-
-        Args:
-            net_outputs (List[dict]): List of dict storing the inferenced
-                bounding boxes and scores.
-            sample_idx_list (List[int]): List of input sample idx.
-            class_names (List[str]): A list of class names.
-            pklfile_prefix (str, optional): The prefix of pkl file.
-                Defaults to None.
-            submission_prefix (str, optional): The prefix of submission file.
-                Defaults to None.
-
-        Returns:
-            List[dict]: A list of dictionaries with the kitti format.
-        """
-        assert len(net_outputs) == len(self.data_infos), \
-            'invalid list length of network outputs'
-        if submission_prefix is not None:
-            mmengine.mkdir_or_exist(submission_prefix)
-
-        det_annos = []
-        print('\nConverting 3D prediction to KITTI format')
-        for idx, pred_dicts in enumerate(
-                mmengine.track_iter_progress(net_outputs)):
-            sample_idx = sample_idx_list[idx]
-            info = self.data_infos[sample_idx]
-
-            assert len(pred_dicts['scores_3d']) == len(pred_dicts['labels_3d']) == len(pred_dicts['bboxes_3d'])
-
-            box_dict = self.convert_valid_bboxes(pred_dicts, info)
-            anno = {
-                'name': [],
-                'truncated': [],
-                'occluded': [],
-                'alpha': [],
-                'bbox': [],
-                'dimensions': [],
-                'location': [],
-                'rotation_y': [],
-                'score': []
+        
+        annos_dict = dict()
+        for i, anno in enumerate(ann_file['data_list']):
+            # NOTE: This should be corrected and in the OSDAR23 conversion script: Use sample_idx without the .bin
+            # For now, only use the first three characters of the sample_idx
+            sample_idx = anno['sample_idx'][0:3]
+            bbox_3d_lst = []
+            labels_3d_lst = []
+            scores_3d_lst = []
+            for instance in anno['instances']:
+                bbox_3d_lst.append(instance['bbox_3d'])
+                labels_3d_lst.append(instance['bbox_label'])
+                scores_3d_lst.append(instance['score']) # Currently, this value is unnenecessary and will just be 0.00 since it is not implemented 
+            annos_dict[sample_idx] = {
+                'bbox_3d': torch.tensor(bbox_3d_lst),
+                'labels_3d': torch.tensor(labels_3d_lst),
+                'scores_3d': torch.tensor(scores_3d_lst)
             }
-            # bbox=np.zeros([0, 4]),
-            # pred_box_type_3d=type(_preds_dict['bboxes_3d']),
-            # box3d_camera=np.zeros([0, 7]),
-            # box3d_lidar=_preds_dict['bboxes_3d'][valid_inds].numpy(),
-            # scores=_preds_dict['scores_3d'][valid_inds].numpy(),
-            # label_preds=_preds_dict['labels_3d'][valid_inds].numpy(),
-            # sample_idx=_info['sample_idx'])
-
-            if len(box_dict['box3d_lidar']) > 0:
-                box_2d_preds = box_dict['bbox']
-                box_preds = box_dict['box3d_camera']
-                scores = box_dict['scores']
-                box_preds_lidar = box_dict['box3d_lidar']
-                label_preds = box_dict['label_preds']
-                pred_box_type_3d = box_dict['pred_box_type_3d']
-
-                assert len(box_preds) == len(box_2d_preds) == len(box_preds_lidar) == len(scores) == len(label_preds)
-                for box, box_lidar, bbox, score, label in zip(
-                        box_preds, box_preds_lidar, box_2d_preds, scores,
-                        label_preds):
-                    # bbox[2:] = np.minimum(bbox[2:], image_shape[::-1])
-                    # bbox[:2] = np.maximum(bbox[:2], [0, 0]) 
-                    anno['name'].append(class_names[int(label)])
-                    anno['truncated'].append(0.0)
-                    anno['occluded'].append(0)
-                    # if pred_box_type_3d == CameraInstance3DBoxes:
-                    #     anno['alpha'].append(-np.arctan2(box[0], box[2]) +
-                    #                          box[6])
-                    # elif pred_box_type_3d == LiDARInstance3DBoxes:
-                    anno['alpha'].append(-np.arctan2(-box_lidar[1], box_lidar[0]) + box[6]) # This is not really needed
-
-                    # Significant change: I'm only looking at the LiDAR here.
-                    anno['bbox'].append(box_lidar)
-                    anno['dimensions'].append(box_lidar[3:6])
-                    anno['location'].append(box_lidar[:3])
-                    anno['rotation_y'].append(box_lidar[6])
-                    anno['score'].append(score)
-
-                anno = {k: np.stack(v) for k, v in anno.items()}
-            else:
-                anno = {
-                    'name': np.array([]),
-                    'truncated': np.array([]),
-                    'occluded': np.array([]),
-                    'alpha': np.array([]),
-                    'bbox': np.zeros([0, 4]),
-                    'dimensions': np.zeros([0, 3]),
-                    'location': np.zeros([0, 3]),
-                    'rotation_y': np.array([]),
-                    'score': np.array([]),
-                }
-
-            if submission_prefix is not None:
-                curr_file = f'{submission_prefix}/{sample_idx:06d}.txt'
-                with open(curr_file, 'w') as f:
-                    bbox = anno['bbox']
-                    loc = anno['location']
-                    dims = anno['dimensions']  # lhw -> hwl
-
-                    for idx in range(len(bbox)):
-                        print(
-                            '{} -1 -1 {:.4f} {:.4f} {:.4f} {:.4f} '
-                            '{:.4f} {:.4f} {:.4f} '
-                            '{:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}'.format(
-                                anno['name'][idx], anno['alpha'][idx],
-                                bbox[idx][0], bbox[idx][1], bbox[idx][2],
-                                bbox[idx][3], dims[idx][1], dims[idx][2],
-                                dims[idx][0], loc[idx][0], loc[idx][1],
-                                loc[idx][2], anno['rotation_y'][idx],
-                                anno['score'][idx]),
-                            file=f)
-
-            anno['sample_idx'] = np.array(
-                [sample_idx] * len(anno['score']), dtype=np.int64)
-
-            det_annos.append(anno)
-
-        if pklfile_prefix is not None:
-            if not pklfile_prefix.endswith(('.pkl', '.pickle')):
-                out = f'{pklfile_prefix}.pkl'
-            else:
-                out = pklfile_prefix
-            mmengine.dump(det_annos, out)
-            print(f'Result is saved to {out}.')
-
-        return det_annos
-
-    # def bbox2result_kitti2d(
-    #         self,
-    #         net_outputs: List[dict],
-    #         sample_idx_list: List[int],
-    #         class_names: List[str],
-    #         pklfile_prefix: Optional[str] = None,
-    #         submission_prefix: Optional[str] = None) -> List[dict]:
-    #     """Convert 2D detection results to kitti format for evaluation and test
-    #     submission.
-
-    #     Args:
-    #         net_outputs (List[dict]): List of dict storing the inferenced
-    #             bounding boxes and scores.
-    #         sample_idx_list (List[int]): List of input sample idx.
-    #         class_names (List[str]): A list of class names.
-    #         pklfile_prefix (str, optional): The prefix of pkl file.
-    #             Defaults to None.
-    #         submission_prefix (str, optional): The prefix of submission file.
-    #             Defaults to None.
-
-    #     Returns:
-    #         List[dict]: A list of dictionaries with the kitti format.
-    #     """
-    #     assert len(net_outputs) == len(self.data_infos), \
-    #         'invalid list length of network outputs'
-    #     det_annos = []
-    #     print('\nConverting 2D prediction to KITTI format')
-    #     for i, bboxes_per_sample in enumerate(
-    #             mmengine.track_iter_progress(net_outputs)):
-    #         anno = dict(
-    #             name=[],
-    #             truncated=[],
-    #             occluded=[],
-    #             alpha=[],
-    #             bbox=[],
-    #             dimensions=[],
-    #             location=[],
-    #             rotation_y=[],
-    #             score=[])
-    #         sample_idx = sample_idx_list[i]
-
-    #         num_example = 0
-    #         bbox = bboxes_per_sample['bboxes']
-    #         for i in range(bbox.shape[0]):
-    #             anno['name'].append(class_names[int(
-    #                 bboxes_per_sample['labels'][i])])
-    #             anno['truncated'].append(0.0)
-    #             anno['occluded'].append(0)
-    #             anno['alpha'].append(0.0)
-    #             anno['bbox'].append(bbox[i, :4])
-    #             # set dimensions (height, width, length) to zero
-    #             anno['dimensions'].append(
-    #                 np.zeros(shape=[3], dtype=np.float32))
-    #             # set the 3D translation to (-1000, -1000, -1000)
-    #             anno['location'].append(
-    #                 np.ones(shape=[3], dtype=np.float32) * (-1000.0))
-    #             anno['rotation_y'].append(0.0)
-    #             anno['score'].append(bboxes_per_sample['scores'][i])
-    #             num_example += 1
-
-    #         if num_example == 0:
-    #             anno = dict(
-    #                 name=np.array([]),
-    #                 truncated=np.array([]),
-    #                 occluded=np.array([]),
-    #                 alpha=np.array([]),
-    #                 bbox=np.zeros([0, 4]),
-    #                 dimensions=np.zeros([0, 3]),
-    #                 location=np.zeros([0, 3]),
-    #                 rotation_y=np.array([]),
-    #                 score=np.array([]),
-    #             )
-    #         else:
-    #             anno = {k: np.stack(v) for k, v in anno.items()}
-
-    #         anno['sample_idx'] = np.array(
-    #             [sample_idx] * num_example, dtype=np.int64)
-    #         det_annos.append(anno)
-
-    #     if pklfile_prefix is not None:
-    #         if not pklfile_prefix.endswith(('.pkl', '.pickle')):
-    #             out = f'{pklfile_prefix}.pkl'
-    #         else:
-    #             out = pklfile_prefix
-    #         mmengine.dump(det_annos, out)
-    #         print(f'Result is saved to {out}.')
-
-    #     if submission_prefix is not None:
-    #         # save file in submission format
-    #         mmengine.mkdir_or_exist(submission_prefix)
-    #         print(f'Saving KITTI submission to {submission_prefix}')
-    #         for i, anno in enumerate(det_annos):
-    #             sample_idx = sample_idx_list[i]
-    #             cur_det_file = f'{submission_prefix}/{sample_idx:06d}.txt'
-    #             with open(cur_det_file, 'w') as f:
-    #                 bbox = anno['bbox']
-    #                 loc = anno['location']
-    #                 dims = anno['dimensions'][::-1]  # lhw -> hwl
-    #                 for idx in range(len(bbox)):
-    #                     print(
-    #                         '{} -1 -1 {:4f} {:4f} {:4f} {:4f} {:4f} {:4f} '
-    #                         '{:4f} {:4f} {:4f} {:4f} {:4f} {:4f} {:4f}'.format(
-    #                             anno['name'][idx],
-    #                             anno['alpha'][idx],
-    #                             *bbox[idx],  # 4 float
-    #                             *dims[idx],  # 3 float
-    #                             *loc[idx],  # 3 float
-    #                             anno['rotation_y'][idx],
-    #                             anno['score'][idx]),
-    #                         file=f,
-    #                     )
-    #         print(f'Result is saved to {submission_prefix}')
-
-    #     return det_annos
-
-    def convert_valid_bboxes(self, preds_dict: dict, info: dict) -> dict:
-        """Convert the predicted boxes into valid ones.
-
-        There we assume that everything is in the LiDAR frame.
-
+        return annos_dict
+    
+    def convert_from_results(self, results: List[dict]) -> dict:
+        """
+        Convert the results from the model to the required format for the evaluation.
+        
         Args:
-            box_dict (dict): Box dictionaries to be converted.
-
-                - bboxes_3d (:obj:`BaseInstance3DBoxes`): 3D bounding boxes.
-                - scores_3d (Tensor): Scores of boxes.
-                - labels_3d (Tensor): Class labels of boxes.
-            info (dict): Data info.
+            results (List[dict]): The processed results of the whole dataset.
 
         Returns:
-            dict: Valid predicted boxes.
+            dict: The converted results.
 
-            - bbox (np.ndarray): 2D bounding boxes.
-            - box3d_camera (np.ndarray): 3D bounding boxes in
-              camera coordinate.
-            - box3d_lidar (np.ndarray): 3D bounding boxes in
-              LiDAR coordinate.
-            - scores (np.ndarray): Scores of boxes.
-            - label_preds (np.ndarray): Class label predictions.
-            - sample_idx (int): Sample index.
+        The results have the following format:
+         {'pred_instances': {},
+          'pred_instances_3d': {'bboxes_3d': LiDARInstance3DBoxes(
+                tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
+                    [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
+                    [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
+                    [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
+                    [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
+                    [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]])),
+                                    'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
+                                    'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])},
+          'sample_idx': 304}]
+
+
+        Required format for the conversion:
+        {'_sample_idx_': {
+            'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
+                                [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
+                                [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
+                                [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
+                                [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
+                                [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
+            'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
+            'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
+        }
         """
 
-        _preds_dict = copy.copy(preds_dict)
-        _info = copy.copy(info)
+        results_dict = dict()
+        for result in results:
+            sample_idx = result['sample_idx']
+            results_dict[sample_idx] = {
+                'bbox_3d': result['pred_instances_3d']['bboxes_3d'].tensor,
+                'labels_3d': result['pred_instances_3d']['labels_3d'],
+                'scores_3d': result['pred_instances_3d']['scores_3d']
+            }
+        return results_dict
+    
+    def filter_valid_annos(self, annos: dict) -> dict:
+        """
+        Filter the annotations to only include the valid ones.
 
-        if not isinstance(_preds_dict['bboxes_3d'], LiDARInstance3DBoxes):
-            raise TypeError(f'This function only accepts LiDARInstances!')
+        Args:
+            annos (dict): The annotations to be filtered.
+
+        Returns:
+            dict: Identical dict that contains only bounding boxes that have their center point within the point cloud range.
+
+        """
+
+        # Copy the annos dict
+        annos_valid = copy.deepcopy(annos)
+
+        # Iterate through all keys and values in the dict annos_valid
+        for key in annos_valid.keys():
+            bbox_3d = annos_valid[key]['bbox_3d']
+            bbox_3d_center = bbox_3d[:, :3]
+            valid_inds = ((bbox_3d_center[:, 0] >= self.pcd_limit_range[0]) &
+                          (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
+                          (bbox_3d_center[:, 1] >= self.pcd_limit_range[1]) &
+                          (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
+                          (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
+                          (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
+            # Valid mask
+            annos_valid[key]['bbox_3d'] = annos_valid[key]['bbox_3d'][valid_inds]
+            annos_valid[key]['labels_3d'] = annos_valid[key]['labels_3d'][valid_inds]
+            annos_valid[key]['scores_3d'] = annos_valid[key]['scores_3d'][valid_inds]
+
+        return annos_valid
+
+class BevMetrics():
+    def __init__(self,
+                 _gt_annos,
+                 _dt_annos):
         
-        num_boxes_detected = len(_preds_dict['labels_3d'])
+        self.gt_annos = _gt_annos
+        self.dt_annos = _dt_annos
+
+        self.generate_correspondence_matrices()
+        prec_rec_table = self.generate_prec_rec_table()
+
+
+    def generate_correspondence_matrices(self):
+        """
+        Generate the correspondence matrices for the ground truth and the detected annotations.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: The correspondence matrices for the ground truth and the detected annotations.
+        """
         
-        if num_boxes_detected == 0:
-            # print("Debug: No boxes detected!")
-            return dict(
-                bbox=-np.ones([0, 4]),
-                box3d_camera=-np.ones([0, 7]),
-                box3d_lidar=np.zeros([0, 7]),
-                scores=np.zeros([0]),
-                label_preds=np.zeros([0, 4]),
-                sample_idx=_info['sample_idx'])
-        
-        _preds_dict['bboxes_3d'].limit_yaw(offset=0.5, period=np.pi * 2)
+        # Iterate through the detections
+        for key in self.dt_annos.keys():
+            
+            bbox3d_dt = self.dt_annos[key]['bbox_3d']
+            bbox3d_gt = self.gt_annos[key]['bbox_3d']
 
-        # TODO: refactor this function
-        # box_preds = box_dict['bboxes_3d']
-        # scores = box_dict['scores_3d']
-        # labels = box_dict['labels_3d']
-        # sample_idx = info['sample_idx']
+            sample_num_dt_annos = bbox3d_dt.shape[0]
+            sample_num_gt_annos = bbox3d_gt.shape[0]
 
-        # if isinstance(box_preds, LiDARInstance3DBoxes):
-        #     box_preds_camera = box_preds.convert_to(Box3DMode.CAM, lidar2cam)
-        #     box_preds_lidar = box_preds
-        # elif isinstance(box_preds, CameraInstance3DBoxes):
-        #     box_preds_camera = box_preds
-        #     box_preds_lidar = box_preds.convert_to(Box3DMode.LIDAR,
-        #                                            np.linalg.inv(lidar2cam))
+            # Create a matrix with the number of detected annotations as rows and the number of ground truth annotations as columns
+            correspondence_matrix = np.zeros((sample_num_dt_annos, sample_num_gt_annos))
 
-        # box_corners = box_preds_camera.corners
-        # box_corners_in_image = points_cam2img(box_corners, P2)
-        # box_corners_in_image: [N, 8, 2]
-        # minxy = torch.min(box_corners_in_image, dim=1)[0]
-        # maxxy = torch.max(box_corners_in_image, dim=1)[0]
-        # box_2d_preds = torch.cat([minxy, maxxy], dim=1)
-        # Post-processing
-        # check box_preds_camera
-        # image_shape = box_preds.tensor.new_tensor(img_shape)
-        # valid_cam_inds = ((box_2d_preds[:, 0] < image_shape[1]) &
-        #                   (box_2d_preds[:, 1] < image_shape[0]) &
-        #                   (box_2d_preds[:, 2] > 0) & (box_2d_preds[:, 3] > 0))
-        # # check box_preds_lidar
+            # Iterate through the detected annotations
+            for i in range(sample_num_dt_annos):
+
+                dt_xywh = (bbox3d_dt[i, 0], bbox3d_dt[i, 1], bbox3d_dt[i, 3], bbox3d_dt[i, 4])
+                dt_bbox = bbox.BBox2D(dt_xywh, mode=0)
+
+                # Iterate through the ground truth annotations
+                for j in range(sample_num_gt_annos):
+                    
+                    gt_xywh = (bbox3d_gt[j, 0], bbox3d_gt[j, 1], bbox3d_gt[j, 3], bbox3d_gt[j, 4])
+                    gt_bbox = bbox.BBox2D(gt_xywh, mode=0)
+
+                    _2d_jaccard = bbox.iou_2d(dt_bbox, gt_bbox)
+
+                    correspondence_matrix[i, j] = _2d_jaccard
+
+            self.dt_annos[key]['corr_mat'] = correspondence_matrix
+
+    def generate_prec_rec_table(self):
+        """
+        Generate the precision-recall table for the detections.
+
+        Returns:
+            pd.DataFrame: The precision-recall table for the detections.
 
 
-        limit_range = _preds_dict['bboxes_3d'].tensor.new_tensor(self.pcd_limit_range)
-        valid_pcd_inds = ((_preds_dict['bboxes_3d'].center > limit_range[:3]) &
-                            (_preds_dict['bboxes_3d'].center < limit_range[3:]))
-        
-        valid_inds = valid_pcd_inds.all(-1)
+        Format of the precision-recall table:
+        +--------+-----------+------------+------------+---------+
+        | sample | detection | confidence | corr_gt_id | max_iou |
+        +--------+-----------+------------+------------+---------+
+        |  000   |     0     |    0.95    |     1      |  0.75   |
+        """
 
-        # if isinstance(box_preds, LiDARInstance3DBoxes):
-        #     limit_range = box_preds.tensor.new_tensor(self.pcd_limit_range)
-        #     valid_pcd_inds = ((box_preds_lidar.center > limit_range[:3]) &
-        #                       (box_preds_lidar.center < limit_range[3:]))
-        #     valid_inds = valid_cam_inds & valid_pcd_inds.all(-1)
-        # else:
-        #     valid_inds = valid_cam_inds
+        prec_rec_table = pd.DataFrame(columns=['sample', 'detection', 'confidence', 'corr_gt_idx', 'max_iou'])
+        sample = []
+        detection = []
+        confidence = []
+        corr_gt_idx = []
+        max_iou = []
 
-        if valid_inds.sum() > 0:
-            # print("Debug: Valid boxes detected!")
-            return dict(
-                bbox=-np.ones([len(_preds_dict['bboxes_3d'][valid_inds]), 4]),
-                pred_box_type_3d=type(_preds_dict['bboxes_3d']),
-                box3d_camera=-np.ones([len(_preds_dict['bboxes_3d'][valid_inds]), 7]),
-                box3d_lidar=_preds_dict['bboxes_3d'][valid_inds].numpy(),
-                scores=_preds_dict['scores_3d'][valid_inds].numpy(),
-                label_preds=_preds_dict['labels_3d'][valid_inds].numpy(),
-                sample_idx=_info['sample_idx'])
-        else:
-            # print("Debug: No valid boxes detected!")
-            return dict(
-                bbox=-np.ones([0, 4]),
-                pred_box_type_3d=type(_preds_dict['bboxes_3d']),
-                box3d_camera=-np.ones([0, 7]),
-                box3d_lidar=np.zeros([0, 7]),
-                scores=np.zeros([0]),
-                label_preds=np.zeros([0]),
-                sample_idx=_info['sample_idx'])
+        for key in self.dt_annos.keys():
+            corr_mat = self.dt_annos[key]['corr_mat']
+
+            # If there are multiple detections for one ground truth annotation, the maximum IoU is taken (i.e. for each column, we set all values to 0 except for the maximum value in the column)
+            max_indices_per_column = np.argmax(corr_mat, axis=0)
+            corr_mat_mask = np.zeros_like(corr_mat)
+            corr_mat = np.where(corr_mat_mask, corr_mat, 0.0)
+
+            sample_num_dt_annos = corr_mat.shape[0]
+            sample_num_gt_annos = corr_mat.shape[1]
+
+            # NOTE: Case where all detections are wrong (i.e. the row of the corr_mat is all zeros), or where all detections have an identical IoU (i.e. the row of the corr_mat is all the same value)
+            # are deliberately not considered here. The IoU in the dataframe will be 0 and it will count as a FP in the precision-recall calculation.
+
+            for i in range(sample_num_dt_annos):
+                max_iou_idx = np.argmax(corr_mat[i, :])
+                sample.append(key)
+                detection.append(i)
+                confidence.append(self.dt_annos[key]['scores_3d'][i])
+                corr_gt_idx.append(max_iou_idx)
+                max_iou.append(corr_mat[i, max_iou_idx])
+
+        prec_rec_table['sample'] = sample
+        prec_rec_table['detection'] = detection
+        prec_rec_table['confidence'] = confidence
+        prec_rec_table['corr_gt_idx'] = corr_gt_idx
+        prec_rec_table['max_iou'] = max_iou
+
+        return prec_rec_table
+    
+    def _acc(self, list):
+        acc_list = []
+        temp_sum = 0
+        for i in list:
+            temp_sum += i
+            acc_list.append(temp_sum)
+        return acc_list
+    
+    def _prec(self, _acc_tp, _acc_fp):
+        temp_list = []
+        for i in range(len(_acc_tp)):
+            temp_list.append(_acc_tp[i] / (i+1))
+
+    def _rec (self, _acc_tp, _acc_fp):
+        return _acc_tp / len(_acc_fp)
+    
+    def add_tp_fp_acctp_accfp_prec_rec(self, iou_threshold):
+
+        if 'tp'+str(iou_threshold) in self.prec_rec_table.columns:
+            raise ValueError(f'The columns tp{str(iou_threshold)} and fp{str(iou_threshold)} already exist in the precision-recall table.')
+
+        # True positive list is list that contains 1 where max_iou is above the iou_threshold and 0 otherwise
+        tp_list = self.prec_rec_table['max_iou'] > iou_threshold
+        fp_list = np.logical_not(tp_list)
+
+        # Add the true positive and false positive lists to the precision-recall table
+        self.prec_rec_table['tp'+str(iou_threshold)] = tp_list
+        self.prec_rec_table['fp'+str(iou_threshold)] = fp_list
+
+        # Sort table by confidence
+        self.prec_rec_table = self.prec_rec_table.sort_values(by='confidence', ascending=False)
+
+        # Add the accumulated true positive and false positive lists to the precision-recall table
+        self.prec_rec_table['acc_tp'+str(iou_threshold)] = self._acc(tp_list)
+        self.prec_rec_table['acc_fp'+str(iou_threshold)] = self._acc(fp_list)
+
+        # Calculate the precision and recall
+        self.prec_rec_table['prec'+str(iou_threshold)] = self._prec(self.prec_rec_table['acc_tp'+str(iou_threshold)], self.prec_rec_table['acc_fp'+str(iou_threshold)])
+        self.prec_rec_table['rec'+str(iou_threshold)] = self._rec(self.prec_rec_table['acc_tp'+str(iou_threshold)], self.prec_rec_table['acc_fp'+str(iou_threshold)])
+
+    def calculate_pascal_voc_ap_by_aoc(self, iou_threshold):
+        """
+        Calculate the Pascal VOC AP for the detections.
+
+        PASCAL VOC 2012 challenge uses the interpolated average precision. It tries to summarize the shape of the Precision x Recall curve by averaging the precision at 
+        a set of eleven equally spaced recall levels [0, 0.1, 0.2, … , 1]. This was later extended to 40 equally spaced recall levels [0, 0.025, 0.05, … , 1].
+
+        Instead of using interpolated AP as suggested for VOC originally, we will use the area over the curve (AOC) to calculate the AP. Advantages: More precision, capability to
+        compage methods with low AP. Methode copied from: https://github.com/wang-tf/pascal_voc_tools/blob/master/pascal_voc_tools/Evaluater/tools.py
+
+        Args:
+            iou_threshold (float): The IoU threshold to be used for the calculation.
+
+        Returns:
+            float: The Pascal VOC AP for the detections.
+        """
+
+        # Add the true positive and false positive lists if it does not yet exist
+        if 'tp'+str(iou_threshold) not in self.prec_rec_table.columns:
+            self.add_tp_fp_acctp_accfp_prec_rec(iou_threshold)
+
+        # first append sentinel values at the end
+        mrec = np.concatenate(([0.0], self.prec_rec_table['rec'+str(iou_threshold)], [1.0]))
+        mpre = np.concatenate(([0.0], self.prec_rec_table['prec'+str(iou_threshold)], [0.0]))
+
+        # compute the precision envelope
+        for i in range(mpre.size - 1, 0, -1):
+            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+        # to calculate area under PR curve, look for points
+        # where X axis (recall) changes value
+        i = np.where(mrec[1:] != mrec[:-1])[0]
+
+        # and sum (\Delta recall) * prec
+        ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+        return ap
+    
+    def calculate_pascal_voc_ap_by_interp(self, iou_threshold):
+        raise NotImplementedError("This method is not yet implemented.")
+    
+    def calculate_pascal_voc_map(self):
+        raise NotImplementedError("This method is not yet implemented. Use calculate_pascal_voc_ap_by_aoc instead.")
+    
+class Det3dMetrics()
+    def __init__(self):
+        pass
+
+    def generate_correspondence_matrices(self):
+        raise NotImplementedError("This method is not yet implemented.")
+
