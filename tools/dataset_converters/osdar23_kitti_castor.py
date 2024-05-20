@@ -134,8 +134,8 @@ class OSDaR23_2_KITTI_Converter(object):
             'car': ['road_vehicle'],
             'train': ['train', 'wagons'],
             'bike': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            'unknown': ['animal', 'group_of_animals', 'wheelchair'],
-            'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch'],
+            'unknown': ['animal', 'group_of_animals'],
+            'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
         }
 
         self.ensure_mapping_consistency(self.OSDAR23_CLASSES, self.class_names)

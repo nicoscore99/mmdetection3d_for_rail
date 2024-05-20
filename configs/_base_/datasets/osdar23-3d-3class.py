@@ -1,5 +1,7 @@
 # dataset settings
-custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset', 'mmdet3d.engine.hooks.wandb_logger_hook'], allow_failed_imports=False)
+custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset', 
+                               'mmdet3d.engine.hooks.wandb_logger_hook',
+                               'mmdet3d.evaluation.metrics.general_3ddet_metric'], allow_failed_imports=False)
 dataset = dict(type='OSDaR23Dataset')
 dataset_type = 'OSDaR23Dataset'
 data_root = 'data/osdar23/'
@@ -129,9 +131,9 @@ test_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 val_evaluator = dict(
-    type='KittiMetric',
+    type='General_3dDet_Metric',
     ann_file=data_root + 'kitti_infos_val.pkl',
-    metric='bbox',
+    metric='bev',
     backend_args=backend_args)
 test_evaluator = val_evaluator
 

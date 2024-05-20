@@ -3,6 +3,7 @@ import tempfile
 from os import path as osp
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
+import pprint
 import bbox
 import torch
 import pandas as pd
@@ -12,23 +13,7 @@ import copy
 from mmengine import load
 from mmengine.evaluator import BaseMetric
 from mmengine.logging import MMLogger, print_log
-
-from mmdet3d.evaluation import kitti_eval
-from mmdet3d.evaluation.functional.kitti_utils import eval_pc_3d_generalized
 from mmdet3d.registry import METRICS
-from mmdet3d.structures import (Box3DMode, CameraInstance3DBoxes,
-                                LiDARInstance3DBoxes, points_cam2img)
-
-
-def print_dict_keys_hierarchy(d, indent_level=0):
-    indent = " " * (4 * indent_level)  # Indentation for hierarchical display
-    for key, value in d.items():
-        # Print the key and its length
-        print(f"{indent}- Key: {key}, Length: {len(str(key))}")
-
-        # If the value is a dictionary, recursively call the function with increased indent level
-        if isinstance(value, dict):
-            print_dict_keys_hierarchy(value, indent_level + 1)
 
 @METRICS.register_module()
 class General_3dDet_Metric(BaseMetric):
@@ -74,9 +59,8 @@ class General_3dDet_Metric(BaseMetric):
                  submission_prefix: Optional[str] = None,
                  collect_device: str = 'cpu',
                  backend_args: Optional[dict] = None) -> None:
-        
-        super(General_3dDet_Metric, self).__init__(collect_device=collect_device, prefix=prefix)
         self.default_prefix = 'General 3D Det metric'
+        super(General_3dDet_Metric, self).__init__(collect_device=collect_device, prefix=prefix)
         self.pcd_limit_range = pcd_limit_range
         self.ann_file = ann_file
         self.pklfile_prefix = pklfile_prefix
@@ -92,14 +76,54 @@ class General_3dDet_Metric(BaseMetric):
             'the end.'
 
         # '3d' and 'bev' stand for '3-dimensional object detction metrics' and 'bird's eye view object detection metrics'
-        allowed_metrics = ['3d', 'bev']
+        allowed_metrics = ['det3d', 'bev']
         self.metrics = metric if isinstance(metric, list) else [metric]
-        self.difficulty_levels = [25.0, 50.0, 70.0]
+        self.difficulty_levels = [0.01, 50.0, 70.0]
+        
+        # Check that difficulty levels are not empty
+        if not self.difficulty_levels:
+            raise ValueError('difficulty_levels should not be empty.')
 
         for metric in self.metrics:
             if metric not in allowed_metrics:
                 raise KeyError("metric should be one of 'bbox', 'img_bbox', "
                                f'but got {metric}.')
+
+    def process(self, data_batch: dict, data_samples: Sequence[dict]) -> dict:
+        """Process one batch of data samples and predictions.
+
+        The processed results should be stored in ``self.results``, which will
+        be used to compute the metrics when all batches have been processed.
+
+        Args:
+            data_batch (dict): A batch of data from the dataloader.
+            data_samples (Sequence[dict]): A batch of outputs from the model.
+
+
+        Required format for the conversion:
+        {'_sample_idx_': {
+            'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
+                                [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
+                                [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
+                                [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
+                                [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
+                                [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
+            'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
+            'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
+        }
+        
+        """
+
+        for data_sample in data_samples:
+            results_dict = dict()
+            sample_idx = data_sample['lidar_path'].split('/')[-1][-7:-4]
+            result = {
+                'bbox_3d': data_sample['pred_instances_3d']['bboxes_3d'].tensor,
+                'labels_3d': data_sample['pred_instances_3d']['labels_3d'],
+                'scores_3d': data_sample['pred_instances_3d']['scores_3d']
+            }
+            results_dict[sample_idx] = result
+            self.results.append(results_dict)
 
     def compute_metrics(self, results: List[dict]) -> Dict[str, float]:
         """Compute the metrics from processed results.
@@ -142,16 +166,6 @@ class General_3dDet_Metric(BaseMetric):
 
         metric_dict = {}
 
-        # for metric in self.metrics:
-        #     ap_dict = self.kitti_evaluate(
-        #         result_dict,
-        #         gt_annos,
-        #         metric=metric,
-        #         logger=logger,
-        #         classes=self.classes)
-        #     for result in ap_dict:
-        #         metric_dict[result] = ap_dict[result]
-
         if 'bev' in self.metrics:
             bev_dict = dict()
             bev_metrics = BevMetrics(gt_annos_valid, dt_annos_valid)
@@ -160,6 +174,8 @@ class General_3dDet_Metric(BaseMetric):
 
             for difficulty in self.difficulty_levels:
                 bev_dict[f'bev_{difficulty}'] = bev_metrics.calculate_pascal_voc_ap_by_aoc(difficulty)
+
+            metric_dict['bev'] = bev_dict
 
         return metric_dict
     
@@ -229,7 +245,7 @@ class General_3dDet_Metric(BaseMetric):
         for i, anno in enumerate(ann_file['data_list']):
             # NOTE: This should be corrected and in the OSDAR23 conversion script: Use sample_idx without the .bin
             # For now, only use the first three characters of the sample_idx
-            sample_idx = anno['sample_idx'][0:3]
+            sample_idx = anno['lidar_points']['lidar_path'][-7:-4]
             bbox_3d_lst = []
             labels_3d_lst = []
             scores_3d_lst = []
@@ -246,50 +262,20 @@ class General_3dDet_Metric(BaseMetric):
     
     def convert_from_results(self, results: List[dict]) -> dict:
         """
-        Convert the results from the model to the required format for the evaluation.
         
+        Convert the results from the model to the required format for the evaluation. Since the processing is already done in 
+        the process method, the results are already in the required format. Only step left is to concatinate the list into a
+        single dict.
+
         Args:
             results (List[dict]): The processed results of the whole dataset.
 
         Returns:
             dict: The converted results.
-
-        The results have the following format:
-         {'pred_instances': {},
-          'pred_instances_3d': {'bboxes_3d': LiDARInstance3DBoxes(
-                tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
-                    [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
-                    [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
-                    [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
-                    [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
-                    [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]])),
-                                    'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
-                                    'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])},
-          'sample_idx': 304}]
-
-
-        Required format for the conversion:
-        {'_sample_idx_': {
-            'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
-                                [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
-                                [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
-                                [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
-                                [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
-                                [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
-            'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
-            'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
-        }
+        
         """
-
-        results_dict = dict()
-        for result in results:
-            sample_idx = result['sample_idx']
-            results_dict[sample_idx] = {
-                'bbox_3d': result['pred_instances_3d']['bboxes_3d'].tensor,
-                'labels_3d': result['pred_instances_3d']['labels_3d'],
-                'scores_3d': result['pred_instances_3d']['scores_3d']
-            }
-        return results_dict
+        merged_dict = {k: v for d in results for k, v in d.items()}
+        return merged_dict
     
     def filter_valid_annos(self, annos: dict) -> dict:
         """
@@ -332,7 +318,7 @@ class BevMetrics():
         self.dt_annos = _dt_annos
 
         self.generate_correspondence_matrices()
-        prec_rec_table = self.generate_prec_rec_table()
+        self.prec_rec_table = self.generate_prec_rec_table()
 
 
     def generate_correspondence_matrices(self):
@@ -367,7 +353,7 @@ class BevMetrics():
                     gt_xywh = (bbox3d_gt[j, 0], bbox3d_gt[j, 1], bbox3d_gt[j, 3], bbox3d_gt[j, 4])
                     gt_bbox = bbox.BBox2D(gt_xywh, mode=0)
 
-                    _2d_jaccard = bbox.iou_2d(dt_bbox, gt_bbox)
+                    _2d_jaccard = bbox.metrics.iou_2d(dt_bbox, gt_bbox)
 
                     correspondence_matrix[i, j] = _2d_jaccard
 
@@ -397,25 +383,33 @@ class BevMetrics():
 
         for key in self.dt_annos.keys():
             corr_mat = self.dt_annos[key]['corr_mat']
-
-            # If there are multiple detections for one ground truth annotation, the maximum IoU is taken (i.e. for each column, we set all values to 0 except for the maximum value in the column)
-            max_indices_per_column = np.argmax(corr_mat, axis=0)
-            corr_mat_mask = np.zeros_like(corr_mat)
-            corr_mat = np.where(corr_mat_mask, corr_mat, 0.0)
-
             sample_num_dt_annos = corr_mat.shape[0]
             sample_num_gt_annos = corr_mat.shape[1]
 
+            # If there are multiple detections with a positive IoU with a single ground truth annotation, the maximum IoU is taken 
+            # (i.e. for each column, we set all values to 0 except for the maximum value in the column)
+            if not (sample_num_dt_annos == 0 or sample_num_gt_annos == 0):
+                max_indices_per_column = np.argmax(corr_mat, axis=0)
+                mask = np.zeros_like(corr_mat, dtype=bool)
+                mask[max_indices_per_column, np.arange(corr_mat.shape[1])] = True
+                corr_mat = np.where(max_indices_per_column, corr_mat, 0.0)
+            
             # NOTE: Case where all detections are wrong (i.e. the row of the corr_mat is all zeros), or where all detections have an identical IoU (i.e. the row of the corr_mat is all the same value)
             # are deliberately not considered here. The IoU in the dataframe will be 0 and it will count as a FP in the precision-recall calculation.
 
             for i in range(sample_num_dt_annos):
-                max_iou_idx = np.argmax(corr_mat[i, :])
+                # Handle case where there is no ground truth annotation (i.e. the shape of bbox3d_gt is (0, #dt))
+                if sample_num_gt_annos == 0:
+                    max_iou_idx = -1
+                    max_iou_value = -1.0
+                else:
+                    max_iou_idx = np.argmax(corr_mat[i, :])
+                    max_iou_value = corr_mat[i, max_iou_idx]
                 sample.append(key)
                 detection.append(i)
                 confidence.append(self.dt_annos[key]['scores_3d'][i])
                 corr_gt_idx.append(max_iou_idx)
-                max_iou.append(corr_mat[i, max_iou_idx])
+                max_iou.append(max_iou_value)
 
         prec_rec_table['sample'] = sample
         prec_rec_table['detection'] = detection
@@ -437,6 +431,7 @@ class BevMetrics():
         temp_list = []
         for i in range(len(_acc_tp)):
             temp_list.append(_acc_tp[i] / (i+1))
+        return temp_list
 
     def _rec (self, _acc_tp, _acc_fp):
         return _acc_tp / len(_acc_fp)
@@ -485,7 +480,7 @@ class BevMetrics():
         # Add the true positive and false positive lists if it does not yet exist
         if 'tp'+str(iou_threshold) not in self.prec_rec_table.columns:
             self.add_tp_fp_acctp_accfp_prec_rec(iou_threshold)
-
+            
         # first append sentinel values at the end
         mrec = np.concatenate(([0.0], self.prec_rec_table['rec'+str(iou_threshold)], [1.0]))
         mpre = np.concatenate(([0.0], self.prec_rec_table['prec'+str(iou_threshold)], [0.0]))
@@ -508,7 +503,7 @@ class BevMetrics():
     def calculate_pascal_voc_map(self):
         raise NotImplementedError("This method is not yet implemented. Use calculate_pascal_voc_ap_by_aoc instead.")
     
-class Det3dMetrics()
+class Det3dMetrics():
     def __init__(self):
         pass
 
