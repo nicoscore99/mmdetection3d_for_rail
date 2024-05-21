@@ -51,7 +51,7 @@ class General_3dDet_Metric(BaseMetric):
     def __init__(self,
                  ann_file: str,
                  metric: Union[str, List[str]] = [''],
-                 pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 0.0],
+                 pcd_limit_range: List[float] = [0, -43.2, -3, 99.20, 42.2, 1],
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
                  default_cam_key: str = 'CAM2',
@@ -76,7 +76,7 @@ class General_3dDet_Metric(BaseMetric):
             'the end.'
 
         # '3d' and 'bev' stand for '3-dimensional object detction metrics' and 'bird's eye view object detection metrics'
-        allowed_metrics = ['det3d', 'bev']
+        allowed_metrics = ['det3d', 'bev', 'cls']
         self.metrics = metric if isinstance(metric, list) else [metric]
         self.difficulty_levels = [0.01, 50.0, 70.0]
         
@@ -173,9 +173,26 @@ class General_3dDet_Metric(BaseMetric):
             bev_metrics.generate_prec_rec_table()
 
             for difficulty in self.difficulty_levels:
-                bev_dict[f'bev_{difficulty}'] = bev_metrics.calculate_pascal_voc_ap_by_aoc(difficulty)
+                bev_dict[f'AP_{difficulty}'] = bev_metrics.calculate_pascal_voc_ap_by_aoc(difficulty)
 
             metric_dict['bev'] = bev_dict
+
+        if 'det3d' in self.metrics:
+            det3d_dict = dict()
+            det3d_metrics = Det3dMetrics()
+            det3d_metrics.generate_correspondence_matrices()
+            for difficulty in self.difficulty_levels:
+                det3d_dict[f'det3d_{difficulty}'] = det3d_metrics.calculate_pascal_voc_ap_by_aoc(difficulty)
+
+            metric_dict['det3d'] = det3d_dict
+
+        if 'cls' in self.metrics:
+            cls_dict = dict()
+            cls_metrics = ClassificationMetrics(gt_annos_valid, dt_annos_valid)
+            for difficulty in self.difficulty_levels:
+                cls_dict[f'cls_{difficulty}'] = cls_metrics.calculate_pascal_voc_ap_by_aoc(difficulty)
+
+            metric_dict['cls'] = cls_dict
 
         return metric_dict
     
@@ -308,11 +325,16 @@ class General_3dDet_Metric(BaseMetric):
             annos_valid[key]['scores_3d'] = annos_valid[key]['scores_3d'][valid_inds]
 
         return annos_valid
+    
+class BboxEvaluationMethods():
 
-class BevMetrics():
+
+class BevMetrics(EvaluationMethods):
     def __init__(self,
                  _gt_annos,
                  _dt_annos):
+        
+
         
         self.gt_annos = _gt_annos
         self.dt_annos = _dt_annos
@@ -480,7 +502,7 @@ class BevMetrics():
         # Add the true positive and false positive lists if it does not yet exist
         if 'tp'+str(iou_threshold) not in self.prec_rec_table.columns:
             self.add_tp_fp_acctp_accfp_prec_rec(iou_threshold)
-            
+
         # first append sentinel values at the end
         mrec = np.concatenate(([0.0], self.prec_rec_table['rec'+str(iou_threshold)], [1.0]))
         mpre = np.concatenate(([0.0], self.prec_rec_table['prec'+str(iou_threshold)], [0.0]))
@@ -504,9 +526,58 @@ class BevMetrics():
         raise NotImplementedError("This method is not yet implemented. Use calculate_pascal_voc_ap_by_aoc instead.")
     
 class Det3dMetrics():
-    def __init__(self):
-        pass
+    def __init__(self,
+                 _gt_annos,
+                 _dt_annos):
+        
+        self.gt_annos = _gt_annos
+        self.dt_annos = _dt_annos
+
+        self.generate_correspondence_matrices()
+        self.prec_rec_table = self.generate_prec_rec_table()
 
     def generate_correspondence_matrices(self):
-        raise NotImplementedError("This method is not yet implemented.")
+        """
+        Generate the correspondence matrices for the ground truth and the detected annotations.
+        """
+        
+        # Iterate through the detections
+        for key in self.dt_annos.keys():
+            
+            bbox3d_dt = self.dt_annos[key]['bbox_3d']
+            bbox3d_gt = self.gt_annos[key]['bbox_3d']
 
+            sample_num_dt_annos = bbox3d_dt.shape[0]
+            sample_num_gt_annos = bbox3d_gt.shape[0]
+
+            # Create a matrix with the number of detected annotations as rows and the number of ground truth annotations as columns
+            correspondence_matrix = np.zeros((sample_num_dt_annos, sample_num_gt_annos))
+
+            # Iterate through the detected annotations
+            for i in range(sample_num_dt_annos):
+                
+                # NOTE: Not completely certain that this is correct
+                dt_bbox = bbox.BBox3D(x=bbox3d_dt[i, 0], y=bbox3d_dt[i, 1], z=bbox3d_dt[i, 2],
+                                      height=bbox3d_dt[i, 3], width=bbox3d_dt[i, 4], length=bbox3d_dt[i, 5],
+                                      euler_angles=[0,0, bbox3d_dt[i, 6]], is_center=True)
+
+                # Iterate through the ground truth annotations
+                for j in range(sample_num_gt_annos):
+                    
+                    gt_bbox = bbox.BBox3D(x=bbox3d_gt[j, 0], y=bbox3d_gt[j, 1], z=bbox3d_gt[j, 2],
+                                            height=bbox3d_gt[j, 3], width=bbox3d_gt[j, 4], length=bbox3d_gt[j, 5],
+                                            euler_angles=[0,0, bbox3d_gt[j, 6]], is_center=True)
+
+                    _3d_jaccard = bbox.metrics.iou_3d(dt_bbox, gt_bbox)
+
+                    correspondence_matrix[i, j] = _3d_jaccard
+
+            self.dt_annos[key]['corr_mat'] = correspondence_matrix
+
+    
+class ClassificationMetrics():
+    def __init__(self, gt_annos, dt_annos):
+        self.gt_annos = gt_annos
+        self.dt_annos = dt_annos
+
+    def 
