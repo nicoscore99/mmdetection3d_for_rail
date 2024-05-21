@@ -134,8 +134,8 @@ class OSDaR23_2_KITTI_Converter(object):
             'car': ['road_vehicle'],
             'train': ['train', 'wagons'],
             'bike': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            'unknown': ['animal', 'group_of_animals', 'wheelchair'],
-            'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch'],
+            'unknown': ['animal', 'group_of_animals'],
+            'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
         }
 
         self.ensure_mapping_consistency(self.OSDAR23_CLASSES, self.class_names)
@@ -198,8 +198,10 @@ class OSDaR23_2_KITTI_Converter(object):
         # Convert quaternion to rotation matrix
         transform = R.from_quat([q_x, q_y, q_z, omega])
         yaw = transform.as_euler('zxy')[0]
+
         # Convert the OSDaR23 bounding box to the KITTI bounding box
-        kitti_bbox3d = [cp_x, cp_y, cp_z, d_z, d_x, d_y, yaw]
+        # x, y, z, h, w, l, yaw
+        kitti_bbox3d = [cp_x, cp_y, cp_z-d_z/2, d_y, d_z, d_x, yaw]
         return kitti_bbox3d
 
 
@@ -406,25 +408,25 @@ class OSDaR23_2_KITTI_Converter(object):
                         for cuboid in cuboid_data:
                             bbox3d = cuboid['val']
                             
-                            roll, pitch, yaw = self.quat2eulers(q0=bbox3d[6], q1=bbox3d[3], q2=bbox3d[4], q3=bbox3d[5])
+                            # roll, pitch, yaw = self.quat2eulers(q0=bbox3d[6], q1=bbox3d[3], q2=bbox3d[4], q3=bbox3d[5])
+                            # Convert the OSDaR23 bounding box to the KITTI bounding box
+                            kitti_bbox3d = self.osdarbbox3d_to_kittibbox3d(bbox3d)
 
                             truncated = 0.0 # Not imblemented
                             occlusion = 0 # Not implemented
-                            alpha = yaw
                             left = -1   # Not implemented
                             top = -1    # Not implemented
                             right = -1  # Not implemented
                             bottom = -1 # Not implemented
-                            height = bbox3d[9] # d_z
-                            width = bbox3d[7] # d_x
-                            length = bbox3d[8] # d_y
-                            x = bbox3d[0]
-                            y = bbox3d[1]
-                            z = bbox3d[2]
-                            rotation_y = yaw # Temporary, probably wrong since its not with respect to the camera
-
-                            # Convert the OSDaR23 bounding box to the KITTI bounding box
-                            kitti_bbox3d = self.osdarbbox3d_to_kittibbox3d(bbox3d)
+                            x, y, z, height, width, length, rotation_y = kitti_bbox3d
+                            alpha = rotation_y # Temporary, probably wrong since its not with respect to the camera
+                            # height = bbox3d[9] # d_z
+                            # width = bbox3d[7] # d_x
+                            # length = bbox3d[8] # d_y
+                            # x = bbox3d[0]
+                            # y = bbox3d[1]
+                            # z = bbox3d[2]
+                            # rotation_y = yaw # Temporary, probably wrong since its not with respect to the camera
 
                             with open(out_path, 'a') as f:
                                 f.write(f'{projected_class_name} {truncated} {occlusion} {alpha} {left} {top} {right} {bottom} {height} {width} {length} {x} {y} {z} {rotation_y}\n')
@@ -450,14 +452,16 @@ class OSDaR23_2_KITTI_Converter(object):
                 frame_key = '0' + frame_key    
             
             # Find the corresponding lidar file
-            lidar_file = [file for file in available_files if frame_key in file]
+            lidar_file = [file for file in available_files if frame_key in file[:3]]
 
             print(lidar_file)
 
             if len(lidar_file) == 0:
-                raise ValueError(f'No lidar file found for frame {frame_key}')
+                raise ValueError(f'No lidar file found for frame {frame_key} in scene {scene_folder}')
             elif len(lidar_file) > 1:
-                raise ValueError(f'Multiple lidar files found for frame {frame_key}')
+                print(_common_frame_keys)
+                print(lidar_file)
+                raise ValueError(f'Multiple lidar files found for frame {frame_key} in scene {scene_folder}')
             
             copy_path = osp.join(self.orig_folder, scene_folder, 'lidar', lidar_file[0])
             out_path = osp.join(out_dir, f'{scene_folder}_{frame_key}.bin')

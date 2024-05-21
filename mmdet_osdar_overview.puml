@@ -69,7 +69,7 @@ package "mmdet3d" {
 
     package "tools" {
         package "converters" {
-            class OSDaR2_KITTI_Converter {
+            class OSDaR2_KITTI_Castor {
                 + convert()
                 + convert_scene()
                 + create_labels()
@@ -139,7 +139,7 @@ DATASETS <-- Registry
 create_groundtruth_database --> OSDaR23Dataset : calls build on
 
 configs.__base__.datasets -- data : defines location and organization
-data <-- mmdet3d.tools.converters.OSDaR2_KITTI_Converter : generates OSDaR23Dataset in identical format as KITTI
+data <-- mmdet3d.tools.converters.OSDaR2_KITTI_Castor : generates OSDaR23Dataset in identical format as KITTI
 data --> pkl_data : is generated from
 
 kitti_converter --> pkl_data : generates

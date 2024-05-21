@@ -153,6 +153,7 @@ def _calculate_num_points_in_gt(data_path,
         rots = annos['rotation_y'][:num_obj]
         gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]],
                                          axis=1)
+        
         gt_boxes_lidar = box_np_ops.box_camera_to_lidar(
             gt_boxes_camera, rect, Trv2c)
         indices = box_np_ops.points_in_rbbox(points_v[:, :3], gt_boxes_lidar)
@@ -167,15 +168,36 @@ def _calculate_num_points_in_gt_osdar_version(data_path,
                                                 relative_path,
                                                 remove_outside=True,
                                                 num_features=4):
-    for info in mmengine.track_iter_progress(infos):
-        # pc_info = info['point_cloud']
-        # if relative_path:
-        #     lidar_path = str(Path(data_path) / pc_info['velodyne_path'])
-        # else:
-        #     lidar_path = pc_info['velodyne_path']
-        # lidar_points = np.fromfile(v_path, dtype=np.float32, count=-1).reshape([-1, num_features])
 
-        info['annos']['num_points_in_gt'] = np.array([100])
+    for info in mmengine.track_iter_progress(infos):
+        # print(info['annos'])
+        pc_info = info['point_cloud']
+        
+        if relative_path:
+            v_path = str(Path(data_path) / pc_info['velodyne_path'])
+        else:
+            v_path = pc_info['velodyne_path']
+        points_v = np.fromfile(v_path, dtype=np.float32, count=-1).reshape([-1, num_features])
+        annos = info['annos']
+        num_obj = len([n for n in annos['name'] if n != 'DontCare'])
+
+        names = annos['name']
+        dims = annos['dimensions']
+        locs = annos['location']
+        rots = annos['rotation_y']
+
+        gt_points = -np.ones(len(names))
+        for i, values in enumerate(zip(names, dims, locs, rots)):
+            _name, _dim, _loc, _rot = values
+            if _name == 'DontCare':
+                continue
+            else:
+                gt_boxes_lidar = np.concatenate([_loc, _dim, [_rot]], axis=0).reshape((1, 7))
+                indices = box_np_ops.points_in_rbbox(points_v[:, :3], gt_boxes_lidar)
+                num_pts_in_gt = indices.sum(0)
+                gt_points[i] = num_pts_in_gt
+        
+        info['annos']['num_points_in_gt'] = gt_points.astype(np.int32)
 
 def filter_osdar_gt_points(points_v, annos):
 

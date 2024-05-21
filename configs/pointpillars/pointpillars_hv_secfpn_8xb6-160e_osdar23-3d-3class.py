@@ -4,11 +4,22 @@ _base_ = [
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
+_base_.visualizer.vis_backends = [
+    dict(
+        type='WandbVisBackend',
+        init_kwargs={
+            'project': 'mmdetection3d',
+            'entity': 'railsensing'
+        },
+    ),
+]
+
 dataset = dict(type='OSDaR23Dataset')
-point_cloud_range = [0, -40, -3, 70.4, 40, 1]
+point_cloud_range =  [0, -43.2, -3, 99.20, 42.2, 1]
+# point_cloud_range = [0, -65, -3, 200, 65, 1]
 # dataset settings
 data_root = 'data/osdar23/'
-class_names = ['Pedestrian', 'Cyclist', 'Car']
+class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
 metainfo = dict(classes=class_names)
 backend_args = None
 
@@ -18,10 +29,9 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_difficulty=[-1],
-        filter_by_min_points=dict(Car=5, Pedestrian=5, Cyclist=5)),
+        filter_by_min_points=dict(pedestrian=5, car=5, train=5, bike=5, dontcare=5)),
     classes=class_names,
-    sample_groups=dict(Car=15, Pedestrian=15, Cyclist=15),
+    sample_groups=dict(pedestrian=5, car=5, train=5, bike=5, dontcare=5),
     points_loader=dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -39,7 +49,7 @@ train_pipeline = [
         use_dim=4,
         backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
-    dict(type='ObjectSample', db_sampler=db_sampler, use_ground_plane=True),
+    dict(type='ObjectSample', db_sampler=db_sampler, use_ground_plane=False),
     dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
     dict(
         type='GlobalRotScaleTrans',
@@ -129,3 +139,8 @@ param_scheduler = [
 train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=2)
 val_cfg = dict()
 test_cfg = dict()
+
+# custom_hooks = [
+#     dict(type='WandbLoggerHook', 
+#          yaml_config_path='wandb_auth.yaml')
+# ]
