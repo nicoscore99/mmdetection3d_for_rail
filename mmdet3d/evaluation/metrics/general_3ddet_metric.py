@@ -2,7 +2,9 @@
 import tempfile
 from os import path as osp
 from typing import Dict, List, Optional, Sequence, Tuple, Union
+from sklearn import metrics
 
+import matplotlib.pyplot as plt
 import pprint
 import bbox
 import torch
@@ -186,14 +188,6 @@ class General_3dDet_Metric(BaseMetric):
 
             metric_dict['det3d'] = det3d_dict
 
-        if 'cls' in self.metrics:
-            cls_dict = dict()
-            cls_metrics = ClassificationMetrics(gt_annos_valid, dt_annos_valid)
-            for difficulty in self.difficulty_levels:
-                cls_dict[f'cls_{difficulty}'] = cls_metrics.calculate_pascal_voc_ap_by_aoc(difficulty)
-
-            metric_dict['cls'] = cls_dict
-
         return metric_dict
     
     def convert_from_ann_file(self, ann_file: dict) -> dict:
@@ -326,22 +320,17 @@ class General_3dDet_Metric(BaseMetric):
 
         return annos_valid
     
-class BboxEvaluationMethods():
-
-
-class BevMetrics(EvaluationMethods):
+class BevMetrics():
     def __init__(self,
                  _gt_annos,
                  _dt_annos):
-        
-
         
         self.gt_annos = _gt_annos
         self.dt_annos = _dt_annos
 
         self.generate_correspondence_matrices()
-        self.prec_rec_table = self.generate_prec_rec_table()
-
+        self.evaluation_table = self.generate_prec_rec_table()
+        self.confusion_matrices = dict()
 
     def generate_correspondence_matrices(self):
         """
@@ -381,27 +370,28 @@ class BevMetrics(EvaluationMethods):
 
             self.dt_annos[key]['corr_mat'] = correspondence_matrix
 
-    def generate_prec_rec_table(self):
+    def generate_evaluation_table(self):
         """
         Generate the precision-recall table for the detections.
 
         Returns:
             pd.DataFrame: The precision-recall table for the detections.
 
-
-        Format of the precision-recall table:
+        Format of the evaluation table table:
         +--------+-----------+------------+------------+---------+
         | sample | detection | confidence | corr_gt_id | max_iou |
         +--------+-----------+------------+------------+---------+
         |  000   |     0     |    0.95    |     1      |  0.75   |
         """
 
-        prec_rec_table = pd.DataFrame(columns=['sample', 'detection', 'confidence', 'corr_gt_idx', 'max_iou'])
+        evaluation_table = pd.DataFrame(columns=['sample', 'detection', 'confidence', 'corr_gt_idx', 'max_iou'])
         sample = []
         detection = []
         confidence = []
         corr_gt_idx = []
         max_iou = []
+        dt_labels = []
+        gt_labels = []
 
         for key in self.dt_annos.keys():
             corr_mat = self.dt_annos[key]['corr_mat']
@@ -432,14 +422,22 @@ class BevMetrics(EvaluationMethods):
                 confidence.append(self.dt_annos[key]['scores_3d'][i])
                 corr_gt_idx.append(max_iou_idx)
                 max_iou.append(max_iou_value)
+                dt_labels.append(self.dt_annos[key]['labels_3d'][i])
 
-        prec_rec_table['sample'] = sample
-        prec_rec_table['detection'] = detection
-        prec_rec_table['confidence'] = confidence
-        prec_rec_table['corr_gt_idx'] = corr_gt_idx
-        prec_rec_table['max_iou'] = max_iou
+                if max_iou_idx == -1:
+                    # No matching ground truth annotation
+                    gt_labels.append(-1)
+                else:
+                    # Matching ground truth annotation
+                    gt_labels.append(self.gt_annos[key]['labels_3d'][max_iou_idx])
 
-        return prec_rec_table
+        evaluation_table['sample'] = sample
+        evaluation_table['detection'] = detection
+        evaluation_table['confidence'] = confidence
+        evaluation_table['corr_gt_idx'] = corr_gt_idx
+        evaluation_table['max_iou'] = max_iou
+
+        return evaluation_table
     
     def _acc(self, list):
         acc_list = []
@@ -458,31 +456,117 @@ class BevMetrics(EvaluationMethods):
     def _rec (self, _acc_tp, _acc_fp):
         return _acc_tp / len(_acc_fp)
     
-    def add_tp_fp_acctp_accfp_prec_rec(self, iou_threshold):
+    def add_evaluation_table(self, iou_threshold):
 
-        if 'tp'+str(iou_threshold) in self.prec_rec_table.columns:
+        if 'tp'+str(iou_threshold) in self.evaluation_table.columns:
             raise ValueError(f'The columns tp{str(iou_threshold)} and fp{str(iou_threshold)} already exist in the precision-recall table.')
 
         # True positive list is list that contains 1 where max_iou is above the iou_threshold and 0 otherwise
-        tp_list = self.prec_rec_table['max_iou'] > iou_threshold
+        tp_list = self.evaluation_table['max_iou'] > iou_threshold
         fp_list = np.logical_not(tp_list)
 
         # Add the true positive and false positive lists to the precision-recall table
-        self.prec_rec_table['tp'+str(iou_threshold)] = tp_list
-        self.prec_rec_table['fp'+str(iou_threshold)] = fp_list
+        self.evaluation_table['tp'+str(iou_threshold)] = tp_list
+        self.evaluation_table['fp'+str(iou_threshold)] = fp_list
 
         # Sort table by confidence
-        self.prec_rec_table = self.prec_rec_table.sort_values(by='confidence', ascending=False)
+        self.evaluation_table = self.evaluation_table.sort_values(by='confidence', ascending=False)
 
         # Add the accumulated true positive and false positive lists to the precision-recall table
-        self.prec_rec_table['acc_tp'+str(iou_threshold)] = self._acc(tp_list)
-        self.prec_rec_table['acc_fp'+str(iou_threshold)] = self._acc(fp_list)
+        self.evaluation_table['acc_tp'+str(iou_threshold)] = self._acc(tp_list)
+        self.evaluation_table['acc_fp'+str(iou_threshold)] = self._acc(fp_list)
 
         # Calculate the precision and recall
-        self.prec_rec_table['prec'+str(iou_threshold)] = self._prec(self.prec_rec_table['acc_tp'+str(iou_threshold)], self.prec_rec_table['acc_fp'+str(iou_threshold)])
-        self.prec_rec_table['rec'+str(iou_threshold)] = self._rec(self.prec_rec_table['acc_tp'+str(iou_threshold)], self.prec_rec_table['acc_fp'+str(iou_threshold)])
+        self.evaluation_table['prec'+str(iou_threshold)] = self._prec(self.evaluation_table['acc_tp'+str(iou_threshold)], self.evaluation_table['acc_fp'+str(iou_threshold)])
+        self.evaluation_table['rec'+str(iou_threshold)] = self._rec(self.evaluation_table['acc_tp'+str(iou_threshold)], self.evaluation_table['acc_fp'+str(iou_threshold)])
 
-    def calculate_pascal_voc_ap_by_aoc(self, iou_threshold):
+    def class_evaluation(self, _iou_threshold, _cls_idx = None):
+        """
+        Evaluates the evaluation table for a specific class and a specific IoU threshold.
+        
+        Args:
+            _cls_idx (int): The class index to be evaluated.
+            _iou_threshold (float): The IoU threshold to be used for the evaluation.
+        
+        """
+
+    def evaluate_precision(self, _iou_threshold, _cls_idx = None):
+        # Check that the column does not exist yet
+
+        # IoU threshold has to be between 0.0 and 100.0
+        if _iou_threshold < 0.0 or _iou_threshold > 100.0:
+            raise ValueError('The IoU threshold has to be between 0.0 and 100.0.')
+        
+        if _cls_idx is not None:       
+            code = f'{_cls_idx}_{_iou_threshold}'
+            if not 'tp_'+code in self.evaluation_table.columns and not 'fp'+code in self.evaluation_table.columns:
+                self.add_evaluation_table(_iou_threshold, _cls_idx)
+        else:
+            code = f'{_iou_threshold}'
+            if 'tp_' + code not in self.evaluation_table.columns:
+                self.add_evaluation_table(_iou_threshold)
+
+        assert 'prec_'+code not in self.evaluation_table.columns, f'The column prec_{code} does already exist in the precision-recall table. You are overwriting the values.'
+
+        # Make sure the table is sorted by confidence
+        self.evaluation_table = self.evaluation_table.sort_values(by='confidence', ascending=False)
+
+        # Accumulated true positives and false positives
+        self.evaluation_table['acc_tp_'+code] = self._acc(self.evaluation_table['tp_'+code])
+        self.evaluation_table['acc_fp_'+code] = self._acc(self.evaluation_table['fp_'+code])
+
+        # Calculate the precision
+        self.evaluation_table['prec_'+code] = self._prec(self.evaluation_table['acc_tp_'+code], self.evaluation_table['acc_fp_'+code])
+
+        # Drop all columns beginning with 'acc'
+        self.evaluation_table = self.evaluation_table[self.evaluation_table.columns.drop(list(self.evaluation_table.filter(regex='acc')))]
+
+    def evaluate_recall(self, _iou_threshold, _cls_idx = None):
+
+        if _iou_threshold < 0.0 or _iou_threshold > 100.0:
+            raise ValueError('The IoU threshold has to be between 0.0 and 100.0.')
+        
+        if _cls_idx is not None:
+            code = f'{_cls_idx}_{_iou_threshold}'
+            if not 'tp_'+code in self.evaluation_table.columns and not 'fp'+code in self.evaluation_table.columns:
+                self.add_evaluation_table(_iou_threshold, _cls_idx)
+        else:
+            code = f'{_iou_threshold}'
+            if 'tp_' + code not in self.evaluation_table.columns:
+                self.add_evaluation_table(_iou_threshold)
+
+        assert 'rec_'+code not in self.evaluation_table.columns, f'The column rec_{code} does already exist in the precision-recall table. You are overwriting the values.'
+
+        # Make sure the table is sorted by confidence
+        self.evaluation_table = self.evaluation_table.sort_values(by='confidence', ascending=False)
+
+        # Calculate the recall
+        self.evaluation_table['rec_'+code] = self._rec(self.evaluation_table['acc_tp_'+code], self.evaluation_table['acc_fp_'+code])
+
+        # Drop all columns beginning with 'acc'
+        self.evaluation_table = self.evaluation_table[self.evaluation_table.columns.drop(list(self.evaluation_table.filter(regex='acc')))]
+
+
+    def evaluate_recall(self, _iou_threshold, _cls_idx = None):
+        """
+        Evaluate the recall for the detections.
+
+        Args:
+            iou_threshold (float): The IoU threshold to be used for the evaluation.
+            cls_idx (int): The class index to be evaluated.
+
+        Returns:
+            float: The recall for the detections.
+        """
+
+        if 'tp'+str(_iou_threshold) not in self.evaluation_table.columns:
+            self.add_evaluation_table(_iou_threshold)
+
+        return self.evaluation_table['rec'+str(_iou_threshold)].mean()
+
+
+
+    def calculate_ap_detection(self, iou_threshold):
         """
         Calculate the Pascal VOC AP for the detections.
 
@@ -519,11 +603,34 @@ class BevMetrics(EvaluationMethods):
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
         return ap
     
-    def calculate_pascal_voc_ap_by_interp(self, iou_threshold):
-        raise NotImplementedError("This method is not yet implemented.")
-    
-    def calculate_pascal_voc_map(self):
-        raise NotImplementedError("This method is not yet implemented. Use calculate_pascal_voc_ap_by_aoc instead.")
+    def generate_confusion_matrix(self, iou_threshold):
+        """
+        Generate the confusion matrix for the detections.
+
+        Args:
+            iou_threshold (float): The IoU threshold to be used for the calculation.
+
+        Returns:
+            np.ndarray: The confusion matrix for the detections.
+        """
+
+        if 'tp'+str(iou_threshold) not in self.prec_rec_table.columns:
+            self.add_tp_fp_acctp_accfp_prec_rec(iou_threshold)
+
+        df_temp = self.prec_rec_table
+        
+        # Select rows with positive gt_label (i.e. omit all detections without a matching ground truth annotation)
+        df_temp = df_temp[df_temp['corr_gt_idx'] != -1]
+        
+        # Select rows with IoU above the threshold
+        df_temp = df_temp[df_temp['max_iou'] > iou_threshold]
+
+        # Create the confusion matrix
+        confusion_matrix = metrics.confusion_matrix(df_temp['gt_label'], df_temp['dt_label'])
+
+        self.confusion_matrices[str(iou_threshold)] = confusion_matrix
+
+    def save_confusion_matrix
     
 class Det3dMetrics():
     def __init__(self,
@@ -575,9 +682,3 @@ class Det3dMetrics():
             self.dt_annos[key]['corr_mat'] = correspondence_matrix
 
     
-class ClassificationMetrics():
-    def __init__(self, gt_annos, dt_annos):
-        self.gt_annos = gt_annos
-        self.dt_annos = dt_annos
-
-    def 
