@@ -134,6 +134,8 @@ val_evaluator = dict(
     type='General_3dDet_Metric',
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='bev',
+    class_names=class_names,
+    output_dir='work_dirs/osdar23-3d',
     backend_args=backend_args)
 test_evaluator = val_evaluator
 
