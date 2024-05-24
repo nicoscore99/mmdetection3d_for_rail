@@ -1,18 +1,18 @@
 _base_ = [
     '../_base_/models/pointpillars_hv_secfpn_osdar23.py',
-    '../_base_/datasets/osdar23-3d-3class.py',
+    '../_base_/datasets/osdar23-3d.py',
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
-_base_.visualizer.vis_backends = [
-    dict(
-        type='WandbVisBackend',
-        init_kwargs={
-            'project': 'mmdetection3d',
-            'entity': 'railsensing'
-        },
-    ),
-]
+# _base_.visualizer.vis_backends = [
+#     dict(
+#         type='WandbVisBackend',
+#         init_kwargs={
+#             'project': 'mmdetection3d',
+#             'entity': 'railsensing'
+#         }
+#     )
+# ]
 
 dataset = dict(type='OSDaR23Dataset')
 point_cloud_range =  [0, -43.2, -3, 99.20, 42.2, 1]
@@ -94,7 +94,7 @@ val_dataloader = dict(dataset=dict(pipeline=test_pipeline, metainfo=metainfo))
 # In practice PointPillars also uses a different schedule
 # optimizer
 lr = 0.001
-epoch_num = 6
+epoch_num = 100
 optim_wrapper = dict(
     optimizer=dict(lr=lr), clip_grad=dict(max_norm=35, norm_type=2))
 param_scheduler = [
@@ -136,7 +136,7 @@ param_scheduler = [
 # PointPillars usually need longer schedule than second, we simply double
 # the training schedule. Do remind that since we use RepeatDataset and
 # repeat factor is 2, so we actually train 160 epochs.
-train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=2)
+train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=5)
 val_cfg = dict()
 test_cfg = dict()
 

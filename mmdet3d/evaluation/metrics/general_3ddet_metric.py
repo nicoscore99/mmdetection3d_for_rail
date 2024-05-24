@@ -54,7 +54,7 @@ class General_3dDet_Metric(BaseMetric):
 
     def __init__(self,
                  ann_file: str,
-                 metric: Union[str, List[str]] = [''],
+                 metric: Union[str, List[str]] = ['bev', 'det3d'],
                  pcd_limit_range: List[float] = [0, -43.2, -3, 99.20, 42.2, 1],
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
@@ -86,7 +86,7 @@ class General_3dDet_Metric(BaseMetric):
         # '3d' and 'bev' stand for '3-dimensional object detction metrics' and 'bird's eye view object detection metrics'
         allowed_metrics = ['det3d', 'bev']
         self.metrics = metric if isinstance(metric, list) else [metric]
-        self.difficulty_levels = [0.01, 50.0, 70.0]
+        self.difficulty_levels = [0.01, 0.1, 0.5]
         
         # Check that difficulty levels are not empty
         if not self.difficulty_levels:
@@ -393,42 +393,47 @@ class MetricEvaluation(ABC):
         results_class_unspecific = dict()
         results_class_specific = dict()
 
-        # generate correspondence matrices
-        self.generate_correspondence_matrices()
+        try:
+            # generate correspondence matrices
+            self.generate_correspondence_matrices()
 
-        # generate evaluation table
-        evaluation_table = self.generate_evaluation_table()
+            # generate evaluation table
+            evaluation_table = self.generate_evaluation_table()
 
-        tp_curves = []
-        fp_curves = []
-        precision_curves = []
-        recall_curves = []
-        
-        for level in levels:
-            # Class unspecific evaluation metrics
-            precision_curve, recall_curve, tp, fp = self.class_unspecific_evaluation(eval_tab=evaluation_table, _iou_threshold=level)
-            tp_curves.append(tp)
-            fp_curves.append(fp)
-            precision_curves.append(precision_curve)
-            recall_curves.append(recall_curve)     
-            ap = self.calculate_ap(recall_curve, precision_curve)
-            results_class_unspecific[f'AP_{level}'] = ap
+            tp_curves = []
+            fp_curves = []
+            precision_curves = []
+            recall_curves = []
+            
+            for level in levels:
+                # Class unspecific evaluation metrics
+                precision_curve, recall_curve, tp, fp = self.class_unspecific_evaluation(eval_tab=evaluation_table, _iou_threshold=level)
+                tp_curves.append(tp)
+                fp_curves.append(fp)
+                precision_curves.append(precision_curve)
+                recall_curves.append(recall_curve)     
+                results_class_unspecific[f'AP_{level}'] = self.calculate_ap(recall_curve, precision_curve)
 
-            # Class specific evaluation metrics
-            map_list = []
-            ap_per_class = dict()
-            for cls_idx in range(len(self.classes_list)):
-                precision_curve, recall_curve = self.class_specific_evaluation(eval_tab=evaluation_table, _cls_idx=cls_idx, _iou_threshold=level)
-                ap = self.calculate_ap(recall_curve, precision_curve)
-                map_list.append(ap)
-                ap_per_class[f'class_{self.classes_list[cls_idx]}'] = ap
+                # Class specific evaluation metrics
+                map_list = []
+                ap_per_class = dict()
+                for cls_idx in range(len(self.classes_list)):
+                    precision_curve, recall_curve, tp, fp = self.class_specific_evaluation(eval_tab=evaluation_table, _cls_idx=cls_idx, _iou_threshold=level)
+                    ap = self.calculate_ap(recall_curve, precision_curve)
+                    map_list.append(ap)
+                    ap_per_class[f'class_{self.classes_list[cls_idx]}'] = ap
 
-            results_class_specific[f'AP_{level}'] = ap_per_class
-            results_class_specific[f'mAP_{level}'] = self.map(map_list)
+                results_class_specific[f'AP_{level}'] = ap_per_class
+                results_class_specific[f'mAP_{level}'] = self.map(map_list)
 
-        if save_graphics:
-            self.save_roc_precrec_curves(np.array(tp_curves), np.array(fp_curves), np.array(precision_curves), np.array(recall_curves))
-            self.save_confusion_matrix(gt_class=evaluation_table['gt_labels'], dt_class=evaluation_table['dt_labels'])
+            if save_graphics:
+                self.save_roc_precrec_curves(y_true_positive=np.array(tp_curves), 
+                                            y_score=np.array(evaluation_table['confidence']),
+                                            levels=levels)
+                self.save_confusion_matrix(gt_class=evaluation_table['gt_labels'], dt_class=evaluation_table['dt_labels'])
+
+        except Exception as e:
+            print(f"An error occurred during the evaluation: {e}")
 
         results_dict = {
             'class_unspecific': results_class_unspecific,
@@ -486,17 +491,17 @@ class MetricEvaluation(ABC):
                     max_iou_value = corr_mat[i, max_iou_idx]
                 sample.append(key)
                 detection.append(i)
-                confidence.append(self.dt_annos[key]['scores_3d'][i])
+                confidence.append(self.dt_annos[key]['scores_3d'][i].item())
                 corr_gt_idx.append(max_iou_idx)
                 max_iou.append(max_iou_value)
-                dt_labels.append(self.dt_annos[key]['labels_3d'][i])
+                dt_labels.append(self.dt_annos[key]['labels_3d'][i].item())
 
                 if max_iou_idx == -1:
                     # No matching ground truth annotation
                     gt_labels.append(-1)
                 else:
                     # Matching ground truth annotation
-                    gt_labels.append(self.gt_annos[key]['labels_3d'][max_iou_idx])
+                    gt_labels.append(self.gt_annos[key]['labels_3d'][max_iou_idx].item())
 
         evaluation_table['sample'] = sample
         evaluation_table['detection'] = detection
@@ -508,22 +513,27 @@ class MetricEvaluation(ABC):
 
         return evaluation_table
     
-    def _acc(self, list):
+    def _acc(self, 
+             lst: List[int]):
         acc_list = []
         temp_sum = 0
-        for i in list:
+        for i in lst:
             temp_sum += i
             acc_list.append(temp_sum)
         return acc_list
     
-    def _prec(self, _acc_tp, _acc_fp):
+    def _prec(self,
+              _acc_tp: List[int], 
+              _acc_fp: List[int]):
         temp_list = []
         for i in range(len(_acc_tp)):
             temp_list.append(_acc_tp[i] / (i+1))
-        return temp_list
+        return np.array(temp_list)
 
-    def _rec (self, _acc_tp, _acc_fp):
-        return _acc_tp / len(_acc_fp)
+    def _rec (self, 
+              _acc_tp: List[int],
+              _acc_fp: List[int]):
+        return np.array(_acc_tp) / len(_acc_tp)
 
     def class_unspecific_evaluation(self,
                                     eval_tab: pd.DataFrame,
@@ -553,7 +563,7 @@ class MetricEvaluation(ABC):
         precision_curve = self._prec(accumulated_correct_predictions, accumulated_false_predictions)
         recall_curve = self._rec(accumulated_correct_predictions, accumulated_false_predictions)
 
-        return precision_curve, recall_curve
+        return precision_curve, recall_curve, correct_predictions, false_predictions
 
     def class_specific_evaluation(self, 
                                   eval_tab: pd.DataFrame,
@@ -579,7 +589,7 @@ class MetricEvaluation(ABC):
         evaluation_table = evaluation_table[(evaluation_table['dt_labels'] == _cls_idx) | (evaluation_table['gt_labels'] == _cls_idx)]
 
         above_threshold = evaluation_table['max_iou'] > _iou_threshold
-        correctly_classified = evaluation_table['gt_labels'] == evaluation_table['dt_labels'] == _cls_idx
+        correctly_classified = (evaluation_table['gt_labels'] == _cls_idx) & (evaluation_table['dt_labels'] == _cls_idx)
         correct_predictions = above_threshold & correctly_classified
         false_predictions = above_threshold & np.logical_not(correctly_classified)
 
@@ -593,11 +603,11 @@ class MetricEvaluation(ABC):
     
     def calculate_ap(self, recall_curve, precision_curve):
 
-        # Check type is float of recall_curve and precision_curve
-        if not isinstance(recall_curve, float):
-            raise ValueError('The recall curve has to be a float.')
-        if not isinstance(precision_curve, float):
-            raise ValueError('The precision curve has to be a float.')
+        # Check type of recall and precision curve is list of type float
+        if not isinstance(recall_curve, np.ndarray):
+            raise ValueError('The recall curve has to be a numpy array.')
+        if not isinstance(precision_curve, np.ndarray):
+            raise ValueError('The precision curve has to be a numpy array.')
 
         # first append sentinel values at the end
         mrec = np.concatenate(([0.0], recall_curve, [1.0]))
@@ -633,10 +643,8 @@ class MetricEvaluation(ABC):
         return np.mean(ap_list)
 
     def save_roc_precrec_curves(self,
-                                true_positives: np.ndarray,
-                                false_positives: np.ndarray,
-                                recall_curves: np.ndarray,
-                                precision_curves: np.ndarray,
+                                y_true_positive: np.ndarray,
+                                y_score: np.ndarray,
                                 levels: List[float]):
         
         """
@@ -644,14 +652,17 @@ class MetricEvaluation(ABC):
         Generates a ROC curve and a precision-recall curve for the detections at every difficulty level (class unspecific).
 
         Args:
+            true_positives (np.ndarray): The true positives for the detections.
+            false_positives (np.ndarray): The false positives for the detections.
             recall_curves (np.ndarray): The recall curves for the detections.
             precision_curves (np.ndarray): The precision curves for the detections.
             levels (List[float]): The difficulty levels at which the curves should be generated.
 
         """
 
-        assert recall_curves.shape == precision_curves.shape, "The shape of the recall curves and the precision curves is not the same."
-        assert recall_curves.shape[0] == precision_curves.shape[0] == len(levels), "The number of curves is not the same as the number of levels."
+        # assert that the lengths of y_true_positive and y_score are the same
+        if y_true_positive.shape[1] != len(y_score):
+            raise ValueError('The lengths of the true positives and the scores are not the same.')
 
         # subplot with two plots
         fig, axs = plt.subplots(1, 2, figsize=(12, 6))
@@ -664,12 +675,18 @@ class MetricEvaluation(ABC):
         axs[1].set_ylabel('Precision')
 
         for level in range(len(levels)):
-            axs[0].plot(false_positives[level], true_positives[level], label=f'ROC Curve at {levels[level]}')
-            axs[1].plot(recall_curves[level], precision_curves[level], label=f'Precision-Recall Curve at {levels[level]}')
+
+            fpr, tpr, _ = metrics.roc_curve(y_true=y_true_positive[level], y_score=y_score)
+            auc = metrics.roc_auc_score(y_true=y_true_positive[level], y_score=y_score)
+            precision, recall, _ = metrics.precision_recall_curve(y_true=y_true_positive[level], probas_pred=y_score)
+
+            axs[0].plot(fpr, tpr, label=f'ROC IoU {levels[level]} (AUC = {auc:.2f})')
+            axs[1].plot(recall, precision, label=f'Precision-Recall IoU {levels[level]}')
 
         axs[0].legend()
+        axs[1].legend()
 
-        plt.savefig(osp.join(self.output_dir, 'roc_precrec_curves.png'))         
+        plt.savefig(osp.join(self.output_dir, self.token + '_roc_precrec_curves.png'))      
 
     def save_confusion_matrix(self,
                               gt_class: List[int],
@@ -695,13 +712,14 @@ class MetricEvaluation(ABC):
         gt_class = gt_class[mask]
         dt_class = dt_class[mask]
 
-        # Create the confusion matrix
-        confusion_matrix = metrics.confusion_matrix(gt_class, dt_class)
+        gt_class = [self.classes_list[i] for i in gt_class]
+        dt_class = [self.classes_list[i] for i in dt_class]
 
-        # plot the confusion matrix
-        plt.imshow(confusion_matrix, interpolation='nearest')
-        plt.colorbar()
-        plt.savefig(osp.join(self.output_dir, 'confusion_matrix.png'))
+        # Create the confusion matrix
+        confusion_matrix_display = metrics.ConfusionMatrixDisplay.from_predictions(y_true=gt_class, y_pred=dt_class)
+        # save the confusion matrix
+        plot = confusion_matrix_display.plot(include_values=True, cmap='viridis', ax=None, xticks_rotation='horizontal')
+        plt.savefig(osp.join(self.output_dir, self.token + '_confusion_matrix.png'))
 
 class Det3DMetric(MetricEvaluation):
     def __init__(self,
@@ -711,6 +729,7 @@ class Det3DMetric(MetricEvaluation):
                  _output_dir: str):
         
         super(Det3DMetric, self).__init__(_gt_annos, _dt_annos, _classes_list, _output_dir)
+        self.token = 'det3d'
 
     def generate_correspondence_matrices(self):
         """
@@ -758,6 +777,7 @@ class BevMetrics(MetricEvaluation):
                  _output_dir: str):
         
         super(BevMetrics, self).__init__(_gt_annos, _dt_annos, _classes_list, _output_dir)
+        self.token = 'bev'
 
     def generate_correspondence_matrices(self):
         """
