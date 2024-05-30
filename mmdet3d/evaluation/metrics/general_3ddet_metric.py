@@ -55,13 +55,14 @@ class General_3dDet_Metric(BaseMetric):
     def __init__(self,
                  ann_file: str,
                  metric: Union[str, List[str]] = ['bev', 'det3d'],
-                 pcd_limit_range: List[float] = [0, -43.2, -3, 99.20, 42.2, 1],
+                 pcd_limit_range: List[float] = [0, -39.68, -3, 69.12, 39.68, 20],
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
                  default_cam_key: str = 'CAM2',
                  format_only: bool = False,
                  submission_prefix: Optional[str] = None,
                  collect_device: str = 'cpu',
+                 save_graphics: Optional[bool] = False,
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  backend_args: Optional[dict] = None) -> None:
@@ -76,6 +77,7 @@ class General_3dDet_Metric(BaseMetric):
         self.backend_args = backend_args
         self.classes = classes
         self.output_dir = output_dir
+        self.save_graphics = save_graphics
 
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
@@ -94,8 +96,7 @@ class General_3dDet_Metric(BaseMetric):
 
         for metric in self.metrics:
             if metric not in allowed_metrics:
-                raise KeyError("metric should be one of 'bbox', 'img_bbox', "
-                               f'but got {metric}.')
+                raise KeyError("metric should be one of {allowed_metrics} but got {metric}.")
             
         # Ensure that the classes are not empty
         if not self.classes:
@@ -182,8 +183,11 @@ class General_3dDet_Metric(BaseMetric):
         # Assert that the keys of the gt_annos and dt_annos are the same
         assert gt_annos.keys() == dt_annos.keys(), "The keys of the gt_annos and dt_annos are not the same."
 
-        gt_annos_valid = self.filter_valid_annos(gt_annos)
-        dt_annos_valid = self.filter_valid_annos(dt_annos)
+        gt_annos_valid, perc = self.filter_valid_annos(gt_annos)
+        print("Percentage of valid bounding boxes for ground truth: ", perc)
+
+        dt_annos_valid, perc = self.filter_valid_annos(dt_annos)
+        print("Percentage of valid bounding boxes for detections: ", perc)
 
         metric_dict = {}
 
@@ -193,7 +197,7 @@ class General_3dDet_Metric(BaseMetric):
                                   _classes_list=self.classes,
                                   _output_dir=self.output_dir)
 
-            results_dict = bev_metric.evaluate(save_graphics=True, levels=self.difficulty_levels)
+            results_dict = bev_metric.evaluate(save_graphics=self.save_graphics, levels=self.difficulty_levels)
             metric_dict['bev'] = results_dict
 
         if 'det3d' in self.metrics:
@@ -202,7 +206,7 @@ class General_3dDet_Metric(BaseMetric):
                                      _classes_list=self.classes,
                                      _output_dir=self.output_dir)
 
-            results_dict = det3d_metric.evaluate(save_graphics=True, levels=self.difficulty_levels)
+            results_dict = det3d_metric.evaluate(save_graphics=self.save_graphics, levels=self.difficulty_levels)
             metric_dict['det3d'] = results_dict
 
         return metric_dict
@@ -330,12 +334,20 @@ class General_3dDet_Metric(BaseMetric):
                           (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
                           (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
                           (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
+
             # Valid mask
             annos_valid[key]['bbox_3d'] = annos_valid[key]['bbox_3d'][valid_inds]
             annos_valid[key]['labels_3d'] = annos_valid[key]['labels_3d'][valid_inds]
             annos_valid[key]['scores_3d'] = annos_valid[key]['scores_3d'][valid_inds]
 
-        return annos_valid
+        # Number of bounding boxes before filtering
+        num_bbox_before = sum([len(annos[key]['bbox_3d']) for key in annos.keys()])
+        # Number of bounding boxes after filtering
+        num_bbox_after = sum([len(annos_valid[key]['bbox_3d']) for key in annos_valid.keys()])
+
+        percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
+
+        return annos_valid, percentage
     
 class MetricEvaluation(ABC):
     def __init__(self,
