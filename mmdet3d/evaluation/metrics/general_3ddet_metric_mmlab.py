@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 from sklearn import metrics
 from abc import ABC, abstractmethod
 
+import sklearn.metrics as sk_metrics
 import matplotlib.pyplot as plt
 import pprint
 import bbox
@@ -18,7 +19,7 @@ from mmengine import load
 from mmengine.evaluator import BaseMetric
 from mmengine.logging import MMLogger, print_log
 from mmdet3d.registry import METRICS
-from mmdet3d.structures.bbox_3d import LiDARInstance3DBoxes, iou3d_calculator
+from mmdet3d.structures.bbox_3d import LiDARInstance3DBoxes
 from mmdet3d.models.task_modules.assigners.max_3d_iou_assigner import Max3DIoUAssigner
 from mmengine.structures import InstanceData
 
@@ -69,8 +70,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  backend_args: Optional[dict] = None) -> None:
-        self.default_prefix = 'General 3D Det metric'
-        super(General_3dDet_Metric, self).__init__(collect_device=collect_device, prefix=prefix)
+        self.default_prefix = 'General 3D Det metric mmlab'
+        super(General_3dDet_Metric_MMLab, self).__init__(collect_device=collect_device, prefix=prefix)
         self.pcd_limit_range = pcd_limit_range
         self.ann_file = ann_file
         self.pklfile_prefix = pklfile_prefix
@@ -91,7 +92,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         # '3d' and 'bev' stand for '3-dimensional object detction metrics' and 'bird's eye view object detection metrics'
         allowed_metrics = ['det3d', 'bev']
         self.metrics = metric if isinstance(metric, list) else [metric]
-        self.difficulty_levels = [0.01, 0.1, 0.5]
+        self.difficulty_levels = [0.5, 0.1, 0.5]
         
         # Check that difficulty levels are not empty
         if not self.difficulty_levels:
@@ -138,16 +139,14 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         }
         
         """
-
         for data_sample in data_samples:
             results_dict = dict()
             sample_idx = data_sample['lidar_path'].split('/')[-1][-7:-4]
-            result = {
-                'bbox_3d': data_sample['pred_instances_3d']['bboxes_3d'].tensor,
-                'labels_3d': data_sample['pred_instances_3d']['labels_3d'],
-                'scores_3d': data_sample['pred_instances_3d']['scores_3d']
-            }
-            results_dict[sample_idx] = result
+            dt_bboxes = InstanceData()
+            dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d']
+            dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d']
+            dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d']
+            results_dict[sample_idx] = dt_bboxes
             self.results.append(results_dict)
 
     def compute_metrics(self, results: List[dict]) -> Dict[str, float]:
@@ -186,32 +185,24 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         # Assert that the keys of the gt_annos and dt_annos are the same
         assert gt_annos.keys() == dt_annos.keys(), "The keys of the gt_annos and dt_annos are not the same."
 
-        gt_annos_valid, perc = self.filter_valid_annos(gt_annos)
+        gt_annos_valid, perc = self.filter_valid_gt_annos(gt_annos)
         print("Percentage of valid bounding boxes for ground truth: ", perc)
 
-        dt_annos_valid, perc = self.filter_valid_annos(dt_annos)
+        dt_annos_valid, perc = self.filter_valid_dt_annos(dt_annos)
         print("Percentage of valid bounding boxes for detections: ", perc)
 
-        metric_dict = {}
+        metric_dict = dict()
+        for metric in self.metrics:
+            self.evaluator = EvaluatorMetrics(gt_annos_valid, dt_annos_valid, self.classes, metric=metric)
 
-        if 'bev' in self.metrics:
-            bev_metric = BevMetrics(_gt_annos=gt_annos_valid,
-                                  _dt_annos=dt_annos_valid,
-                                  _classes_list=self.classes,
-                                  _output_dir=self.output_dir)
-
-            results_dict = bev_metric.evaluate(save_graphics=self.save_graphics, levels=self.difficulty_levels)
-            metric_dict['bev'] = results_dict
-
-        if 'det3d' in self.metrics:
-            det3d_metric = Det3DMetric(_gt_annos=gt_annos_valid,
-                                     _dt_annos=dt_annos_valid,
-                                     _classes_list=self.classes,
-                                     _output_dir=self.output_dir)
-
-            results_dict = det3d_metric.evaluate(save_graphics=self.save_graphics, levels=self.difficulty_levels)
-            metric_dict['det3d'] = results_dict
-
+            difficulty_dict = dict()
+            for difficulty in self.difficulty_levels:
+                
+                difficulty_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=difficulty, 
+                                                                                             class_accuracy_requirement='easy')
+            
+            metric_dict[metric] = difficulty_dict
+        
         return metric_dict
     
     def convert_from_ann_file(self, ann_file: dict) -> dict:
@@ -274,6 +265,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
             'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
         }
+
+        Final output format:
+        {'_sample_idx_': InstanceData}
+
         """
         
         annos_dict = dict()
@@ -288,11 +283,13 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                 bbox_3d_lst.append(instance['bbox_3d'])
                 labels_3d_lst.append(instance['bbox_label'])
                 scores_3d_lst.append(instance['score']) # Currently, this value is unnenecessary and will just be 0.00 since it is not implemented 
-            annos_dict[sample_idx] = {
-                'bbox_3d': torch.tensor(bbox_3d_lst),
-                'labels_3d': torch.tensor(labels_3d_lst),
-                'scores_3d': torch.tensor(scores_3d_lst)
-            }
+           
+            gt_instance = InstanceData()
+            gt_instance.bboxes_3d = torch.tensor(bbox_3d_lst)
+            gt_instance.labels_3d = torch.tensor(labels_3d_lst)
+            gt_instance.scores = torch.tensor(scores_3d_lst)        
+            annos_dict[sample_idx] = gt_instance
+
         return annos_dict
     
     def convert_from_results(self, results: List[dict]) -> dict:
@@ -312,518 +309,391 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         merged_dict = {k: v for d in results for k, v in d.items()}
         return merged_dict
     
-    def filter_valid_annos(self, annos: dict) -> dict:
+    def filter_valid_gt_annos(self, annos: dict) -> dict:
         """
+        
         Filter the annotations to only include the valid ones.
 
         Args:
-            annos (dict): The annotations to be filtered.
+            annos (Dict[InstanceData]): The annotations to be filtered.
 
         Returns:
-            dict: Identical dict that contains only bounding boxes that have their center point within the point cloud range.
+            Dict[InstanceData]: Identical dict that contains only bounding boxes that have their center point within the point cloud range.
 
         """
 
-        # Copy the annos dict
-        annos_valid = copy.deepcopy(annos)
+        annos_valid = dict()
 
-        # Iterate through all keys and values in the dict annos_valid
-        for key in annos_valid.keys():
-            bbox_3d = annos_valid[key]['bbox_3d']
-            bbox_3d_center = bbox_3d[:, :3]
+        for key in annos.keys():
+            _bbox_3d = annos[key].bboxes_3d
+            bbox_3d_center = _bbox_3d[:, :3]
             valid_inds = ((bbox_3d_center[:, 0] >= self.pcd_limit_range[0]) &
                           (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
                           (bbox_3d_center[:, 1] >= self.pcd_limit_range[1]) &
                           (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
                           (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
                           (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
+            
+            instance_data_valid = InstanceData()
+            instance_data_valid.bboxes_3d = annos[key].bboxes_3d[valid_inds]
+            instance_data_valid.labels_3d = annos[key].labels_3d[valid_inds]
+            instance_data_valid.scores = annos[key].scores[valid_inds]
 
-            # Valid mask
-            annos_valid[key]['bbox_3d'] = annos_valid[key]['bbox_3d'][valid_inds]
-            annos_valid[key]['labels_3d'] = annos_valid[key]['labels_3d'][valid_inds]
-            annos_valid[key]['scores_3d'] = annos_valid[key]['scores_3d'][valid_inds]
+            annos_valid[key] = instance_data_valid
 
-        # Number of bounding boxes before filtering
-        num_bbox_before = sum([len(annos[key]['bbox_3d']) for key in annos.keys()])
-        # Number of bounding boxes after filtering
-        num_bbox_after = sum([len(annos_valid[key]['bbox_3d']) for key in annos_valid.keys()])
-
+        num_bbox_before = sum([len(annos[key].bboxes_3d) for key in annos.keys()])
+        num_bbox_after = sum([len(annos_valid[key].bboxes_3d) for key in annos_valid.keys()])
         percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
 
         return annos_valid, percentage
     
-class MetricEvaluation(ABC):
-    def __init__(self,
-                 _gt_annos: dict,
-                 _dt_annos: dict,
-                 _classes_list: List[str],
-                 _output_dir: str):
-        
+    def filter_valid_dt_annos(self, annos: dict) -> dict:
         """
         
-        Args:
-            _gt_annos (dict): The ground truth annotations.
-            _dt_annos (dict): The detected annotations.
-            _classes_list (List[str]): The list of class names.
-            _output_dir (str): The output directory for the evaluation results.
-
-        """
-        
-        self.gt_annos = _gt_annos
-        self.dt_annos = _dt_annos
-        self.classes_list = _classes_list
-        self.output_dir = _output_dir
-
-    @abstractmethod
-    def generate_correspondence_matrices(self):
-        """
-        Abstract class that implements a criterion to generate the correspondence matrices for the ground truth and the detected annotations.
-        """
-
-        pass
-
-
-    def evaluate(self,
-                 save_graphics: bool = False,
-                 levels: List[float] = [0.01, 50.0, 70.0]):
-        """
-
-        This function evaluates the defined metric at any of the difficulty levels.
+        Filter the annotations to only include the valid ones.
 
         Args:
-            levels (List[float]): The difficulty levels at which the metric should be evaluated.
+            annos (Dict[InstanceData]): The annotations to be filtered.
 
         Returns:
-            Dict[str, float]: The results of the evaluation at the specified difficulty levels.
+            Dict[InstanceData]: Identical dict that contains only bounding boxes that have their center point within the point cloud range.
 
         """
 
-        # Check that the levels are not empty
-        if not levels:
-            raise ValueError('levels should not be empty.')
-        
-        # Initialize the results dictionary
-        results_class_unspecific = dict()
-        results_class_specific = dict()
+        annos_valid = dict()
 
-        try:
-            # generate correspondence matrices
-            self.generate_correspondence_matrices()
-
-            # generate evaluation table
-            evaluation_table = self.generate_evaluation_table()
-
-            tp_curves = []
-            fp_curves = []
-            precision_curves = []
-            recall_curves = []
+        for key in annos.keys():
+            _bbox_3d = annos[key].bboxes_3d.tensor
+            bbox_3d_center = _bbox_3d[:, :3]
+            valid_inds = ((bbox_3d_center[:, 0] >= self.pcd_limit_range[0]) &
+                          (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
+                          (bbox_3d_center[:, 1] >= self.pcd_limit_range[1]) &
+                          (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
+                          (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
+                          (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
             
-            for level in levels:
-                # Class unspecific evaluation metrics
-                precision_curve, recall_curve, tp, fp = self.class_unspecific_evaluation(eval_tab=evaluation_table, _iou_threshold=level)
-                tp_curves.append(tp)
-                fp_curves.append(fp)
-                precision_curves.append(precision_curve)
-                recall_curves.append(recall_curve)     
-                results_class_unspecific[f'AP_{level}'] = self.calculate_ap(recall_curve, precision_curve)
+            instance_data_valid = InstanceData()
+            instance_data_valid.bboxes_3d = annos[key].bboxes_3d[valid_inds]
+            instance_data_valid.labels_3d = annos[key].labels_3d[valid_inds]
+            instance_data_valid.scores = annos[key].scores[valid_inds]
 
-                # Class specific evaluation metrics
-                map_list = []
-                ap_per_class = dict()
-                for cls_idx in range(len(self.classes_list)):
-                    precision_curve, recall_curve, tp, fp = self.class_specific_evaluation(eval_tab=evaluation_table, _cls_idx=cls_idx, _iou_threshold=level)
-                    ap = self.calculate_ap(recall_curve, precision_curve)
-                    map_list.append(ap)
-                    ap_per_class[f'class_{self.classes_list[cls_idx]}'] = ap
+            annos_valid[key] = instance_data_valid
 
-                results_class_specific[f'AP_{level}'] = ap_per_class
-                results_class_specific[f'mAP_{level}'] = self.map(map_list)
+        num_bbox_before = sum([len(annos[key].bboxes_3d) for key in annos.keys()])
+        num_bbox_after = sum([len(annos_valid[key].bboxes_3d) for key in annos_valid.keys()])
+        percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
 
-            if save_graphics:
-                self.save_roc_precrec_curves(y_true_positive=np.array(tp_curves), 
-                                            y_score=np.array(evaluation_table['confidence']),
-                                            levels=levels)
-                self.save_confusion_matrix(gt_class=evaluation_table['gt_labels'], dt_class=evaluation_table['dt_labels'])
+        return annos_valid, percentage
+    
 
-        except Exception as e:
-            print(f"An error occurred during the evaluation: {e}")
+class EvaluatorMetrics():
 
-        results_dict = {
-            'class_unspecific': results_class_unspecific,
-            'class_specific': results_class_specific
+    def __init__(self, 
+                 gt_annos_valid: dict,
+                 dt_annos_valid: dict,
+                 classes: List[str], 
+                 metric = str):
+        
+        self.iou_calculator_map = {
+            '3d': 'BboxOverlaps3D',
+            'bev': 'BboxOverlapsBev',
+        }
+        
+        # Explaination for the class_accuarcy_requirement_possible: 'easy' means that for a TP the class does not have to be exact,
+        # 'hard' means that for a TP the class has to be exact.
+        self.class_accuracy_requirement_possible = ['easy', 'hard']
+
+        self.class_accuracy_requirement_map = {
+            'easy': self.tp_detection,
+            'hard': self.tp_detection_and_label
         }
 
-        return results_dict
+        self._gt_annos_valid = gt_annos_valid
+        self._dt_annos_valid = dt_annos_valid
+        self._classes = classes
+        self._iou_calculator = self.iou_calculator_map[metric]
+        
+        self.threshold_specific_results_dict = dict()
 
-    def generate_evaluation_table(self):
-        """
-        Generate the precision-recall table for the detections.
 
-        Returns:
-            pd.DataFrame: The precision-recall table for the detections.
-
-        Format of the evaluation table table:
-        +--------+-----------+------------+------------+---------+-----------+-----------+
-        | sample | detection | confidence | corr_gt_id | max_iou | dt_labels | gt_labels |
-        +--------+-----------+------------+------------+---------+-----------+-----------+
-        |  000   |     0     |    0.95    |     1      |  0.75   |     0     |     1     |
-        """
-
-        evaluation_table = pd.DataFrame(columns=['sample', 'detection', 'confidence', 'corr_gt_idx', 'max_iou', 'dt_labels', 'gt_labels'])
-        sample = []
-        detection = []
-        confidence = []
-        corr_gt_idx = []
-        max_iou = []
+    def val_batch_evaluation(self, 
+                             iou_threshold: float) -> dict:
+        
+        iou_assigner = Max3DIoUAssigner(pos_iou_thr=iou_threshold,
+                                        neg_iou_thr=iou_threshold,
+                                        min_pos_iou=iou_threshold,
+                                        iou_calculator=dict(type=self._iou_calculator, coordinate='lidar'))
+        
         dt_labels = []
-        gt_labels = []
+        dt_scores = []
+        assigned_gt_inds = []
+        assigned_max_overlaps = []
+        assigned_labels = []
+        
+        for key in self._gt_annos_valid.keys():
+            gt_instance = self._gt_annos_valid[key]
+            dt_instance = self._dt_annos_valid[key]
+            assign_result = iou_assigner.assign(pred_instances=dt_instance, gt_instances=gt_instance)
 
-        for key in self.dt_annos.keys():
-            corr_mat = self.dt_annos[key]['corr_mat']
-            sample_num_dt_annos = corr_mat.shape[0]
-            sample_num_gt_annos = corr_mat.shape[1]
+            # dt_labels.append(dt_instance.labels_3d.tolist())
+            # dt_scores.append(dt_instance.scores.tolist())   
+            # assigned_gt_inds.append(assign_result.gt_inds.tolist())
+            # assigned_max_overlaps.append(assign_result.max_overlaps.tolist())
+            # assigned_labels.append(assign_result.labels.tolist())
 
-            # If there are multiple detections with a positive IoU with a single ground truth annotation, the maximum IoU is taken 
-            # (i.e. for each column, we set all values to 0 except for the maximum value in the column)
-            if not (sample_num_dt_annos == 0 or sample_num_gt_annos == 0):
-                max_indices_per_column = np.argmax(corr_mat, axis=0)
-                mask = np.zeros_like(corr_mat, dtype=bool)
-                mask[max_indices_per_column, np.arange(corr_mat.shape[1])] = True
-                corr_mat = np.where(max_indices_per_column, corr_mat, 0.0)
-            
-            # NOTE: Case where all detections are wrong (i.e. the row of the corr_mat is all zeros), or where all detections have an identical IoU (i.e. the row of the corr_mat is all the same value)
-            # are deliberately not considered here. The IoU in the dataframe will be 0 and it will count as a FP in the precision-recall calculation.
+            # Maybe something is not fully right here: Does it automatically mean that the labels correspond to the gt_labels?
 
-            for i in range(sample_num_dt_annos):
-                # Handle case where there is no ground truth annotation (i.e. the shape of bbox3d_gt is (0, #dt))
-                if sample_num_gt_annos == 0:
-                    max_iou_idx = -1
-                    max_iou_value = -1.0
-                else:
-                    max_iou_idx = np.argmax(corr_mat[i, :])
-                    max_iou_value = corr_mat[i, max_iou_idx]
-                sample.append(key)
-                detection.append(i)
-                confidence.append(self.dt_annos[key]['scores_3d'][i].item())
-                corr_gt_idx.append(max_iou_idx)
-                max_iou.append(max_iou_value)
-                dt_labels.append(self.dt_annos[key]['labels_3d'][i].item())
+            dt_labels.append(dt_instance.labels_3d)
+            dt_scores.append(dt_instance.scores)
+            assigned_gt_inds.append(assign_result.gt_inds)
+            assigned_max_overlaps.append(assign_result.max_overlaps)
+            assigned_labels.append(assign_result.labels)
 
-                if max_iou_idx == -1:
-                    # No matching ground truth annotation
-                    gt_labels.append(-1)
-                else:
-                    # Matching ground truth annotation
-                    gt_labels.append(self.gt_annos[key]['labels_3d'][max_iou_idx].item())
+        
 
-        evaluation_table['sample'] = sample
-        evaluation_table['detection'] = detection
-        evaluation_table['confidence'] = confidence
-        evaluation_table['corr_gt_idx'] = corr_gt_idx
-        evaluation_table['max_iou'] = max_iou
-        evaluation_table['dt_labels'] = dt_labels
-        evaluation_table['gt_labels'] = gt_labels
+        # assert that all out the lists have the same length
+        assert len(dt_labels) == len(dt_scores) == len(assigned_gt_inds) == len(assigned_max_overlaps) == len(assigned_labels)
 
-        return evaluation_table
-    
-    def _acc(self, 
-             lst: List[int]):
-        acc_list = []
-        temp_sum = 0
-        for i in lst:
-            temp_sum += i
-            acc_list.append(temp_sum)
-        return acc_list
-    
-    def _prec(self,
-              _acc_tp: List[int], 
-              _acc_fp: List[int]):
-        temp_list = []
-        for i in range(len(_acc_tp)):
-            temp_list.append(_acc_tp[i] / (i+1))
-        return np.array(temp_list)
+        threshold_specific_results = {
+            'dt_labels': torch.cat(dt_labels),
+            'confidence': torch.cat(dt_scores),
+            'assigned_gt_inds': torch.cat(assigned_gt_inds),
+            'assigned_max_overlaps': torch.cat(assigned_max_overlaps),
+            'assigned_labels': torch.cat(assigned_labels)
+        }
 
-    def _rec (self, 
-              _acc_tp: List[int],
-              _acc_fp: List[int]):
-        return np.array(_acc_tp) / len(_acc_tp)
+        self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
 
-    def class_unspecific_evaluation(self,
-                                    eval_tab: pd.DataFrame,
-                                    _iou_threshold: float):
+
+    def filter_for_prediction_class(self,
+                                    filter_dict: dict,
+                                    class_idx: int) -> dict:
+        
+        citerion = filter_dict['dt_labels'] == class_idx
+
+        filtered_dict = {
+            'dt_labels': filter_dict['dt_labels'][citerion],
+            'confidence': filter_dict['confidence'][citerion],
+            'assigned_gt_inds': filter_dict['assigned_gt_inds'][citerion],
+            'assigned_max_overlaps': filter_dict['assigned_max_overlaps'][citerion],
+            'assigned_labels': filter_dict['assigned_labels'][citerion]
+        }
+
+        return filtered_dict
+
+    def tp_detection_and_label(self,
+                               filtered_dict: dict) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Evaluates the evaluation table for all classes and a specific IoU threshold (correct classification is not a criterium for the evaluation).
         
         Args:
-            _iou_threshold (float): The IoU threshold to be used for the evaluation.
-        
-        """
-
-        # _iou_threshold needs to be float
-        if not isinstance(_iou_threshold, float):
-            raise ValueError('The IoU threshold has to be a float.')
-
-        # copy evaluation table
-        evaluation_table = eval_tab.copy()
-
-        above_threshold = evaluation_table['max_iou'] > _iou_threshold
-        correct_predictions = above_threshold
-        false_predictions = np.logical_not(above_threshold)
-
-        accumulated_correct_predictions = self._acc(correct_predictions)
-        accumulated_false_predictions = self._acc(false_predictions)
-
-        precision_curve = self._prec(accumulated_correct_predictions, accumulated_false_predictions)
-        recall_curve = self._rec(accumulated_correct_predictions, accumulated_false_predictions)
-
-        return precision_curve, recall_curve, correct_predictions, false_predictions
-
-    def class_specific_evaluation(self, 
-                                  eval_tab: pd.DataFrame,
-                                  _cls_idx: int,
-                                  _iou_threshold: float):
-        """
-        Evaluates the evaluation table for a specific class and a specific IoU threshold.
-        
-        Args:
-            _cls_idx (int): The class index to be evaluated.
-            _iou_threshold (float): The IoU threshold to be used for the evaluation.
-        
-        """
-
-        # _iou_threshold needs to be float, and _cls_idx needs to be int
-        if not isinstance(_iou_threshold, float):
-            raise ValueError('The IoU threshold has to be a float.')
-        if not isinstance(_cls_idx, int):
-            raise ValueError('The class index has to be an integer.')
-
-        # copy evaluation table
-        evaluation_table = eval_tab.copy()
-        evaluation_table = evaluation_table[(evaluation_table['dt_labels'] == _cls_idx) | (evaluation_table['gt_labels'] == _cls_idx)]
-
-        above_threshold = evaluation_table['max_iou'] > _iou_threshold
-        correctly_classified = (evaluation_table['gt_labels'] == _cls_idx) & (evaluation_table['dt_labels'] == _cls_idx)
-        correct_predictions = above_threshold & correctly_classified
-        false_predictions = above_threshold & np.logical_not(correctly_classified)
-
-        accumulated_correct_predictions = self._acc(correct_predictions)
-        accumulated_false_predictions = self._acc(false_predictions)
-
-        precision_curve = self._prec(accumulated_correct_predictions, accumulated_false_predictions)
-        recall_curve = self._rec(accumulated_correct_predictions, accumulated_false_predictions)
-
-        return precision_curve, recall_curve, correct_predictions, false_predictions
-    
-    def calculate_ap(self, recall_curve, precision_curve):
-
-        # Check type of recall and precision curve is list of type float
-        if not isinstance(recall_curve, np.ndarray):
-            raise ValueError('The recall curve has to be a numpy array.')
-        if not isinstance(precision_curve, np.ndarray):
-            raise ValueError('The precision curve has to be a numpy array.')
-
-        # first append sentinel values at the end
-        mrec = np.concatenate(([0.0], recall_curve, [1.0]))
-        mpre = np.concatenate(([0.0], precision_curve, [0.0]))
-
-        # compute the precision envelope
-        for i in range(mpre.size - 1, 0, -1):
-            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-
-        # to calculate area under PR curve, look for points
-        # where X axis (recall) changes value
-        i = np.where(mrec[1:] != mrec[:-1])[0]
-
-        # and sum (\Delta recall) * prec
-        ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-        return ap
-
-    def map(self, ap_list: List[float]) -> float:
-        """
-        Calculate the mean average precision (mAP) from a list of average precisions (AP).
-
-        Args:
-            ap_list (List[float]): The list of average precisions.
+            filtered_dict (dict): A dict that contains the results that were, if this is wanted, already filtered for detection labels.
 
         Returns:
-            float: The mean average precision (mAP).
-        """
+            Tuple[torch.Tensor, torch.Tensor]: A tuple that contains the true positives for the detection labels and the corresponding scores.
 
-        # Ensure correct class list lenght
-        if len(ap_list) != len(self.classes_list):
-            raise ValueError('The length of the average precision list has to be the same as the length of the classes list.')
-
-        return np.mean(ap_list)
-
-    def save_roc_precrec_curves(self,
-                                y_true_positive: np.ndarray,
-                                y_score: np.ndarray,
-                                levels: List[float]):
+        ***Attention***: True positives are defined here as detections, that have a valid, corresponding bounding box AND the correct label.
         
         """
+        
+        tp_criterion = filtered_dict['dt_labels'] == filtered_dict['assigned_labels']
+        tp = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
+        score = filtered_dict['confidence']
+        
+        return tp, score
 
-        Generates a ROC curve and a precision-recall curve for the detections at every difficulty level (class unspecific).
-
-        Args:
-            true_positives (np.ndarray): The true positives for the detections.
-            false_positives (np.ndarray): The false positives for the detections.
-            recall_curves (np.ndarray): The recall curves for the detections.
-            precision_curves (np.ndarray): The precision curves for the detections.
-            levels (List[float]): The difficulty levels at which the curves should be generated.
-
+    def tp_detection(self,
+                     filtered_dict: dict) -> torch.Tensor:
         """
-
-        # assert that the lengths of y_true_positive and y_score are the same
-        if y_true_positive.shape[1] != len(y_score):
-            raise ValueError('The lengths of the true positives and the scores are not the same.')
-
-        # subplot with two plots
-        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
-
-        axs[0].set_title('ROC Curve')
-        axs[0].set_xlabel('False Positive Rate')
-        axs[0].set_ylabel('True Positive Rate')
-        axs[1].set_title('Precision-Recall Curve')
-        axs[1].set_xlabel('Recall')
-        axs[1].set_ylabel('Precision')
-
-        for level in range(len(levels)):
-
-            fpr, tpr, _ = metrics.roc_curve(y_true=y_true_positive[level], y_score=y_score)
-            auc = metrics.roc_auc_score(y_true=y_true_positive[level], y_score=y_score)
-            precision, recall, _ = metrics.precision_recall_curve(y_true=y_true_positive[level], probas_pred=y_score)
-
-            axs[0].plot(fpr, tpr, label=f'ROC IoU {levels[level]} (AUC = {auc:.2f})')
-            axs[1].plot(recall, precision, label=f'Precision-Recall IoU {levels[level]}')
-
-        axs[0].legend()
-        axs[1].legend()
-
-        plt.savefig(osp.join(self.output_dir, self.token + '_roc_precrec_curves.png'))      
-
-    def save_confusion_matrix(self,
-                              gt_class: List[int],
-                              dt_class: List[int]):
-        """
-        Generate the confusion matrix for the detections.
-
+        
         Args:
-            iou_threshold (float): The IoU threshold to be used for the calculation.
+            filtered_dict (dict): A dict that contains the results that were, if this is wanted, already filtered for detection labels.
 
         Returns:
-            np.ndarray: The confusion matrix for the detections.
-        """
+            torch.Tensor: A tensor that contains the true positives for the detection labels.
 
-        # Check that the classes have equal length
-        if len(gt_class) != len(dt_class):
-            raise ValueError('The length of the ground truth classes and the detected classes is not the same.')
-        
-        # Eliminate all dt_classes or gt_classes that are -1 (i.e. no matching ground truth annotation)
-        gt_class = np.array(gt_class)
-        dt_class = np.array(dt_class)
-        mask = np.logical_and(gt_class != -1, dt_class != -1)
-        gt_class = gt_class[mask]
-        dt_class = dt_class[mask]
-
-        gt_class = [self.classes_list[i] for i in gt_class]
-        dt_class = [self.classes_list[i] for i in dt_class]
-
-        # Create the confusion matrix
-        confusion_matrix_display = metrics.ConfusionMatrixDisplay.from_predictions(y_true=gt_class, y_pred=dt_class)
-        # save the confusion matrix
-        plot = confusion_matrix_display.plot(include_values=True, cmap='viridis', ax=None, xticks_rotation='horizontal')
-        plt.savefig(osp.join(self.output_dir, self.token + '_confusion_matrix.png'))
-
-class Det3DMetric(MetricEvaluation):
-    def __init__(self,
-                 _gt_annos: dict,
-                 _dt_annos: dict,
-                 _classes_list: List[str],
-                 _output_dir: str):
-        
-        super(Det3DMetric, self).__init__(_gt_annos, _dt_annos, _classes_list, _output_dir)
-        self.token = 'det3d'
-
-    def generate_correspondence_matrices(self):
-        """
-        Generate the correspondence matrices for the ground truth and the detected annotations.
-        """
-        
-        # Iterate through the detections
-        for key in self.dt_annos.keys():
+        ***Attention***: True positives are defined here as detections, that have a valid, corresponding bounding box (but not 
+        necessarily the correct label).
             
-            bbox3d_dt = self.dt_annos[key]['bbox_3d']
-            bbox3d_gt = self.gt_annos[key]['bbox_3d']
+        """
+        
+        tp_criterion = filtered_dict['assigned_gt_inds'] > 0
+        tp = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
+        score = filtered_dict['confidence']
 
-            sample_num_dt_annos = bbox3d_dt.shape[0]
-            sample_num_gt_annos = bbox3d_gt.shape[0]
+        return tp, score    
 
-            # Create a matrix with the number of detected annotations as rows and the number of ground truth annotations as columns
-            correspondence_matrix = np.zeros((sample_num_dt_annos, sample_num_gt_annos))
+    def sklearn_average_precision_score(self,
+                                        iou_level: Union[float, List[float]], 
+                                        class_accuracy_requirements: Union[str, List[str]] = 'easy',
+                                        class_idx: Union[int, List[int]] = []):
 
-            # Iterate through the detected annotations
-            for i in range(sample_num_dt_annos):
+        # Assure that the class_idx list is not empty
+        if not class_idx:
+            raise ValueError('class_idx should not be empty. Call property sklearn_mean_average_precision_score instead.')
+        
+        # Assure that the class_accuracy_requirement list is not empty
+        if not class_accuracy_requirements:
+            raise ValueError('class_accuracy_requirement should not be empty.')
+        
+        # Assure that the class_accuracy_requirement list contains one of the possible values
+        if not all([criterion in self.class_accuracy_requirement_possible for criterion in class_accuracy_requirements]):
+            raise ValueError(f'class_accuracy_requirement should only contain the following values: {self.class_accuracy_requirement_possible}.')
+
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
+
+        if isinstance(class_idx, int):
+            class_idx = [class_idx]
+
+        if isinstance(class_accuracy_requirements, str):
+            class_accuracy_requirements = [class_accuracy_requirements]
+
+        level_dict = dict()
+        for level in iou_level:
+            if not level in self.threshold_specific_results_dict.keys():
+                self.val_batch_evaluation(level)
+            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+
+            class_dict = dict()
+            for class_accuracy_requirement in class_accuracy_requirements:
                 
-                # NOTE: Not completely certain that this is correct
-                dt_bbox = bbox.BBox3D(x=bbox3d_dt[i, 0], y=bbox3d_dt[i, 1], z=bbox3d_dt[i, 2],
-                                      height=bbox3d_dt[i, 3], width=bbox3d_dt[i, 4], length=bbox3d_dt[i, 5],
-                                      euler_angles=[0,0, bbox3d_dt[i, 6]], is_center=True)
+                for cls_idx in class_idx:
 
-                # Iterate through the ground truth annotations
-                for j in range(sample_num_gt_annos):
-                    
-                    gt_bbox = bbox.BBox3D(x=bbox3d_gt[j, 0], y=bbox3d_gt[j, 1], z=bbox3d_gt[j, 2],
-                                            height=bbox3d_gt[j, 3], width=bbox3d_gt[j, 4], length=bbox3d_gt[j, 5],
-                                            euler_angles=[0,0, bbox3d_gt[j, 6]], is_center=True)
-
-                    _3d_jaccard = bbox.metrics.iou_3d(dt_bbox, gt_bbox)
-
-                    correspondence_matrix[i, j] = _3d_jaccard
-
-            self.dt_annos[key]['corr_mat'] = correspondence_matrix
-
-class BevMetrics(MetricEvaluation):
-    def __init__(self,
-                 _gt_annos: dict,
-                 _dt_annos: dict,
-                 _classes_list: List[str],
-                 _output_dir: str):
-        
-        super(BevMetrics, self).__init__(_gt_annos, _dt_annos, _classes_list, _output_dir)
-        self.token = 'bev'
-
-    def generate_correspondence_matrices(self):
-        """
-        Generate the correspondence matrices for the ground truth and the detected annotations.
-        """
-        
-        # Iterate through the detections
-        for key in self.dt_annos.keys():
+                    _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
+                    y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_class_filtered_dict)
+                    class_dict[self._classes[cls_idx]] = sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score)
             
-            bbox3d_dt = self.dt_annos[key]['bbox_3d']
-            bbox3d_gt = self.gt_annos[key]['bbox_3d']
+            level_dict[level] = class_dict
 
-            sample_num_dt_annos = bbox3d_dt.shape[0]
-            sample_num_gt_annos = bbox3d_gt.shape[0]
+        return level_dict                    
 
-            # Create a matrix with the number of detected annotations as rows and the number of ground truth annotations as columns
-            correspondence_matrix = np.zeros((sample_num_dt_annos, sample_num_gt_annos))
+    def sklearn_mean_average_precision_score(self,
+                                             iou_level: Union[float, List[float]],
+                                             class_accuracy_requirements: Union[str, List[str]] = 'easy'):
+        
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
 
-            # Iterate through the detected annotations
-            for i in range(sample_num_dt_annos):
+        if isinstance(class_accuracy_requirements, str):
+            class_accuracy_requirements = [class_accuracy_requirements]
 
-                dt_xywh = (bbox3d_dt[i, 0], bbox3d_dt[i, 1], bbox3d_dt[i, 3], bbox3d_dt[i, 4])
-                dt_bbox = bbox.BBox2D(dt_xywh, mode=0)
+        level_dict = dict()
+        for level in iou_level:
+            if not level in self.threshold_specific_results_dict.keys():
+                self.val_batch_evaluation(level)
+            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
 
-                # Iterate through the ground truth annotations
-                for j in range(sample_num_gt_annos):
-                    
-                    gt_xywh = (bbox3d_gt[j, 0], bbox3d_gt[j, 1], bbox3d_gt[j, 3], bbox3d_gt[j, 4])
-                    gt_bbox = bbox.BBox2D(gt_xywh, mode=0)
+            class_dict = dict()
+            for class_accuracy_requirement in class_accuracy_requirements:
+                y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+                class_dict[class_accuracy_requirement] = sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score)
 
-                    _2d_jaccard = bbox.metrics.iou_2d(dt_bbox, gt_bbox)
+            level_dict[level] = class_dict
 
-                    correspondence_matrix[i, j] = _2d_jaccard
+        return level_dict
+            
+    def precision_recall_curve(self,
+                               iou_level: Union[float, List[float]],
+                               class_idx: Union[int, List[int]] = []):
+        
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
 
-            self.dt_annos[key]['corr_mat'] = correspondence_matrix
+        if isinstance(class_idx, int):
+            class_idx = [class_idx]
+        
+        level_dict = dict()
+        for level in iou_level:
+            if not level in self.threshold_specific_results_dict.keys():
+                self.val_batch_evaluation(level)
+            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+
+            class_dict = dict()
+            if class_idx:
+                for cls_idx in class_idx:
+                    _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
+                    y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
+                    precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+
+                    class_dict[self._classes[cls_idx]] = {
+                        'precision': precision,
+                        'recall': recall
+                    }
+            else:
+                y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+                precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+                class_dict['all_classes'] = {
+                    'precision': precision,
+                    'recall': recall
+                }
+        
+            level_dict[level] = class_dict
+
+        return level_dict                  
+        
+    def precision_recall_plot(self,
+                              iou_level: float):
+        
+        level_dict = self.precision_recall_curve(iou_level=iou_level)
+        precision, recall = level_dict[iou_level]['all_classes']['precision'], level_dict[iou_level]['all_classes']['recall']
+        return sk_metrics.PrecisionRecallDisplay(precision=precision, recall=recall, estimator_name='Precision-Recall Curve')
+
+    def roc_curve(self,
+                  iou_level: Union[float, List[float]],
+                  class_idx: Union[int, List[int]] = []):
+        
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
+
+        if isinstance(class_idx, int):
+            class_idx = [class_idx]
+
+        level_dict = dict()
+        for level in iou_level:
+            if not level in self.threshold_specific_results_dict.keys():
+                self.val_batch_evaluation(level)
+            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+
+            class_dict = dict()
+            if class_idx:
+                for cls_idx in class_idx:
+                    _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
+                    y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
+                    fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
+                    class_dict[self._classes[cls_idx]] = {
+                        'fpr': fpr,
+                        'tpr': tpr
+                    }
+            else:
+                y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+                fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
+                class_dict['all_classes'] = {
+                    'fpr': fpr,
+                    'tpr': tpr
+                }
+        
+            level_dict[level] = class_dict
+
+    def roc_plot(self,
+                 iou_level: float):
+        
+        level_dict = self.roc_curve(iou_level=iou_level)
+        fpr, tpr = level_dict[iou_level]['all_classes']['fpr'], level_dict[iou_level]['all_classes']['tpr']
+        return sk_metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, estimator_name='ROC Curve')    
+
+    def confusion_matrix(self,
+                         iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+
+        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_gt_inds'] > 0
+        _y_true = self.threshold_specific_results_dict[iou_level]['assigned_labels'][relevant_inds]
+        _y_pred = self.threshold_specific_results_dict[iou_level]['dt_labels'][relevant_inds]
+        return sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=self._classes)         
+
+    def confusion_matrix_plot(self,
+                              iou_level: float):
+        cm = self.confusion_matrix(iou_level)
+        return sk_metrics.ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self._classes)     
 

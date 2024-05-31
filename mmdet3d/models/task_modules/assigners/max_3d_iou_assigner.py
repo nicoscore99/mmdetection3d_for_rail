@@ -73,7 +73,7 @@ class Max3DIoUAssigner(MaxIoUAssigner):
 
         This method assign a gt bbox to every bbox (proposal/anchor), each bbox
         will be assigned with -1, or a semi-positive number. -1 means negative
-        sample, semi-positive number is the index (0-based) of assigned gt.
+        sample, semi-positiv e number is the index (1-based) of assigned gt. 
         The assignment is done in following steps, the order matters.
 
         1. assign every bbox to the background
