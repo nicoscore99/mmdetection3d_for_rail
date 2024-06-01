@@ -40,6 +40,12 @@ class WandbLoggerHook(LoggerHook):
                  log_artifact: bool = False):
         super().__init__()
 
+        self.curve_visualization_wandb_logging_map = {
+            'roc': self.log_roc_curve,
+            'prec': self.log_prec_curve,
+            'cm': self.log_cm_curve
+        }
+
         self._save_dir = save_dir
         self._init_kwargs = init_kwargs
         self._yaml_config_path = yaml_config_path
@@ -122,8 +128,23 @@ class WandbLoggerHook(LoggerHook):
                         runner: Runner, 
                         metrics: Optional[Dict[str, float]] = None) -> None:
 
-        if metrics:
-            self._wandb.log(metrics, step=runner.iter, commit=self._commit)
+        if metrics['General 3D Det metric mmlab/evaluations'].keys():
+            self._wandb.log(metrics[''], step=runner.iter, commit=self._commit)
+
+        curves = metrics['General 3D Det metric mmlab/curves']
+        if curves.keys():
+            for curve_key in curves.keys():
+                for level in curves[curve_key].keys():
+
+                    self.curve_visualization_wandb_logging_map[curve_key](runner = runner,
+                                                                      curve = curves[curve_key][level],
+                                                                      level = level)
+                    
+    def after_test_epoch(self,
+                         runner: Runner,
+                         metrics: Optional[Dict[str, float]] = None) -> None:
+
+        self.after_val_epoch(runner, metrics)
 
     def get_wandb_file(self, path: str) -> str:
 
@@ -146,6 +167,39 @@ class WandbLoggerHook(LoggerHook):
         # Finish the run and close the wandb logger
         self._wandb.finish()
 
+    def log_roc_curve(self, runner: Runner, curve: dict, level: str) -> None:
+
+        if not 'all_classes' in curve.keys():
+            raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
+        
+        curve = curve['all_classes']
+        data = np.column_stack((np.array(curve['fpr']), np.array(curve['tpr'])))
+        table = wandb.Table(data=data, columns=["FPR", "TPR"])
+        self._wandb.log({"ROC Curve": wandb.plot.line(table, "FPR", "TPR")})
+        print("Logged ROC curve")
+
+
+    def log_prec_curve(self, runner: Runner, curve: dict, level: str) -> None:
+
+        if not 'all_classes' in curve.keys():
+            raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
+        
+        curve = curve['all_classes']
+        data = np.column_stack((np.array(curve['recall']), np.array(curve['precision'])))
+        table = wandb.Table(data=data, columns=["Recall", "Precision"])
+        self._wandb.log({"Precision-Recall Curve": wandb.plot.line(table, "Recall", "Precision")})
+
+    def log_cm_curve(self, runner: Runner, curve: dict, level: str) -> None:
+
+        if not 'all_classes' in curve.keys():
+            raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
     
+
+        self._wandb.log({'cm': wandb.sklearn.plot_confusion_matrix(y_true=curve['y_true'], 
+                                                                   y_pred=curve['y_pred'],
+                                                                   labels=curve['labels'])},
+                        step=runner.iter)
+    
+        print("Logged confusion matrix")
 
 

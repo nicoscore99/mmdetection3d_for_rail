@@ -58,7 +58,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
     def __init__(self,
                  ann_file: str,
-                 metric: Union[str, List[str]] = ['bev', 'det3d'],
+                 metric: str = 'det3d',
                  pcd_limit_range: List[float] = [0, -39.68, -3, 69.12, 39.68, 20],
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
@@ -91,16 +91,22 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         # '3d' and 'bev' stand for '3-dimensional object detction metrics' and 'bird's eye view object detection metrics'
         allowed_metrics = ['det3d', 'bev']
-        self.metrics = metric if isinstance(metric, list) else [metric]
-        self.difficulty_levels = [0.5, 0.1, 0.5]
+        # self.metrics = metric if isinstance(metric, list) else [metric]
+        # For now, metric should just be one. Don't select both.
+        self.metric = metric
+
+        self.difficulty_levels = [0.1, 0.9, 1.0]
         
         # Check that difficulty levels are not empty
         if not self.difficulty_levels:
             raise ValueError('difficulty_levels should not be empty.')
 
-        for metric in self.metrics:
-            if metric not in allowed_metrics:
-                raise KeyError("metric should be one of {allowed_metrics} but got {metric}.")
+        # for metric in self.metrics:
+        #     if metric not in allowed_metrics:
+        #         raise KeyError("metric should be one of {allowed_metrics} but got {metric}.")
+
+        if self.metric not in allowed_metrics:
+            raise KeyError("metric should be one of {allowed_metrics} but got {metric}.")
             
         # Ensure that the classes are not empty
         if not self.classes:
@@ -191,19 +197,23 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         dt_annos_valid, perc = self.filter_valid_dt_annos(dt_annos)
         print("Percentage of valid bounding boxes for detections: ", perc)
 
-        metric_dict = dict()
-        for metric in self.metrics:
-            self.evaluator = EvaluatorMetrics(gt_annos_valid, dt_annos_valid, self.classes, metric=metric)
 
-            difficulty_dict = dict()
-            for difficulty in self.difficulty_levels:
-                
-                difficulty_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=difficulty, 
-                                                                                             class_accuracy_requirement='easy')
-            
-            metric_dict[metric] = difficulty_dict
+        self.evaluator = EvaluatorMetrics(gt_annos_valid, dt_annos_valid, self.classes, metric=self.metric)
+
+        evaluation_results_dict = dict() # Contains all evaluation results
+        curves_dict = dict() # Contains all curves
+
+        # evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
+        #                                                                                  class_accuracy_requirements='hard')
+
+        # evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
+        #                                                                                class_accuracy_requirements='hard')
+
+        curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=0.5)
+        curves_dict['roc'] = self.evaluator.roc_curve(iou_level=0.5)
+        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)        
         
-        return metric_dict
+        return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
     def convert_from_ann_file(self, ann_file: dict) -> dict:
         """
@@ -395,8 +405,8 @@ class EvaluatorMetrics():
                  metric = str):
         
         self.iou_calculator_map = {
-            '3d': 'BboxOverlaps3D',
-            'bev': 'BboxOverlapsBev',
+            'det3d': 'BboxOverlaps3D',
+            'bev': 'BboxOverlapsNearest3D',
         }
         
         # Explaination for the class_accuarcy_requirement_possible: 'easy' means that for a TP the class does not have to be exact,
@@ -449,8 +459,6 @@ class EvaluatorMetrics():
             assigned_max_overlaps.append(assign_result.max_overlaps)
             assigned_labels.append(assign_result.labels)
 
-        
-
         # assert that all out the lists have the same length
         assert len(dt_labels) == len(dt_scores) == len(assigned_gt_inds) == len(assigned_max_overlaps) == len(assigned_labels)
 
@@ -461,6 +469,10 @@ class EvaluatorMetrics():
             'assigned_max_overlaps': torch.cat(assigned_max_overlaps),
             'assigned_labels': torch.cat(assigned_labels)
         }
+
+        # print("Debug: threshold_specific_results: ", threshold_specific_results)
+
+        # raise NotImplementedError
 
         self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
 
@@ -526,6 +538,18 @@ class EvaluatorMetrics():
                                         iou_level: Union[float, List[float]], 
                                         class_accuracy_requirements: Union[str, List[str]] = 'easy',
                                         class_idx: Union[int, List[int]] = []):
+        
+        print("Debug: class_idx: ", class_idx)
+        print("Debug: self._classes: ", self._classes)
+
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
+
+        if isinstance(class_idx, int):
+            class_idx = [class_idx]
+
+        if isinstance(class_accuracy_requirements, str):
+            class_accuracy_requirements = [class_accuracy_requirements]
 
         # Assure that the class_idx list is not empty
         if not class_idx:
@@ -536,17 +560,12 @@ class EvaluatorMetrics():
             raise ValueError('class_accuracy_requirement should not be empty.')
         
         # Assure that the class_accuracy_requirement list contains one of the possible values
-        if not all([criterion in self.class_accuracy_requirement_possible for criterion in class_accuracy_requirements]):
-            raise ValueError(f'class_accuracy_requirement should only contain the following values: {self.class_accuracy_requirement_possible}.')
+        if not all([class_accuracy_requirement in self.class_accuracy_requirement_possible for class_accuracy_requirement in class_accuracy_requirements]):
+            raise ValueError('class_accuracy_requirement should only contain the possible values: ', self.class_accuracy_requirement_possible)
 
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_idx, int):
-            class_idx = [class_idx]
-
-        if isinstance(class_accuracy_requirements, str):
-            class_accuracy_requirements = [class_accuracy_requirements]
+        # Assure that the class_idx list contains only valid indices
+        if not all([cls_idx in range(len(self._classes)) for cls_idx in class_idx]):
+            raise ValueError('class_idx should only contain valid indices for the classes.')
 
         level_dict = dict()
         for level in iou_level:
@@ -561,7 +580,7 @@ class EvaluatorMetrics():
 
                     _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
                     y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_class_filtered_dict)
-                    class_dict[self._classes[cls_idx]] = sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score)
+                    class_dict[self._classes[cls_idx]] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
             
             level_dict[level] = class_dict
 
@@ -586,12 +605,12 @@ class EvaluatorMetrics():
             class_dict = dict()
             for class_accuracy_requirement in class_accuracy_requirements:
                 y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-                class_dict[class_accuracy_requirement] = sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score)
+                class_dict[class_accuracy_requirement] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
 
             level_dict[level] = class_dict
 
         return level_dict
-            
+    
     def precision_recall_curve(self,
                                iou_level: Union[float, List[float]],
                                class_idx: Union[int, List[int]] = []):
@@ -617,14 +636,20 @@ class EvaluatorMetrics():
 
                     class_dict[self._classes[cls_idx]] = {
                         'precision': precision,
-                        'recall': recall
+                        'recall': recall,
+                        'y_true': y_pred,
+                        'y_probas': y_score,
+                        'labels': self._classes
                     }
             else:
                 y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
                 precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
                 class_dict['all_classes'] = {
                     'precision': precision,
-                    'recall': recall
+                    'recall': recall,
+                    'y_true': y_pred,
+                    'y_probas': y_score,
+                    'labels': self._classes
                 }
         
             level_dict[level] = class_dict
@@ -662,38 +687,66 @@ class EvaluatorMetrics():
                     fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
                     class_dict[self._classes[cls_idx]] = {
                         'fpr': fpr,
-                        'tpr': tpr
+                        'tpr': tpr,
+                        'y_true': y_pred,
+                        'y_probas': y_score,
+                        'labels': self._classes
                     }
             else:
                 y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
                 fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
                 class_dict['all_classes'] = {
                     'fpr': fpr,
-                    'tpr': tpr
+                    'tpr': tpr,
+                    'y_true': y_pred,
+                    'y_probas': y_score,
+                    'labels': self._classes
                 }
         
             level_dict[level] = class_dict
+
+        return level_dict
 
     def roc_plot(self,
                  iou_level: float):
         
         level_dict = self.roc_curve(iou_level=iou_level)
         fpr, tpr = level_dict[iou_level]['all_classes']['fpr'], level_dict[iou_level]['all_classes']['tpr']
-        return sk_metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, estimator_name='ROC Curve')    
+        return sk_metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, estimator_name='ROC Curve')
 
     def confusion_matrix(self,
                          iou_level: float):
         
         if not iou_level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(iou_level)
+    
+        # print("Debug: self.threshold_specific_results_dict[iou_level]: ", self.threshold_specific_results_dict[iou_level]['assigned_labels'])
 
-        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_gt_inds'] > 0
+        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_labels'] != -1
+        # print("Debug: relevant_inds: ", relevant_inds)
+
         _y_true = self.threshold_specific_results_dict[iou_level]['assigned_labels'][relevant_inds]
+        # print("Debug: _y_true: ", _y_true)
+
         _y_pred = self.threshold_specific_results_dict[iou_level]['dt_labels'][relevant_inds]
-        return sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=self._classes)         
+        # print("Debug: _y_pred: ", _y_pred)
+
+        _labels = range(len(self._classes))
+
+        confusion_matrix = sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=_labels)
+
+        confusion_matrix_dict ={
+            'y_true': _y_true,
+            'y_pred': _y_pred,
+            'labels': _labels,
+            'cm': confusion_matrix
+        }
+
+        return confusion_matrix_dict
 
     def confusion_matrix_plot(self,
                               iou_level: float):
-        cm = self.confusion_matrix(iou_level)
+        cm_dict = self.confusion_matrix(iou_level)
+        cm = cm_dict['cm']
         return sk_metrics.ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self._classes)     
 
