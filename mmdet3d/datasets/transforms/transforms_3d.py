@@ -870,9 +870,10 @@ class ObjectRangeFilter(BaseTransform):
             dict: Results after filtering, 'gt_bboxes_3d', 'gt_labels_3d'
             keys are updated in the result dict.
         """
+        
         # Check points instance type and initialise bev_range
         if isinstance(input_dict['gt_bboxes_3d'],
-                      (LiDARInstance3DBoxes, DepthInstance3DBoxes)):
+                    (LiDARInstance3DBoxes, DepthInstance3DBoxes)):
             bev_range = self.pcd_range[[0, 1, 3, 4]]
         elif isinstance(input_dict['gt_bboxes_3d'], CameraInstance3DBoxes):
             bev_range = self.pcd_range[[0, 2, 3, 5]]

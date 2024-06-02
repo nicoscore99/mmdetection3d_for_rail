@@ -1,10 +1,10 @@
 # dataset settings
 custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset', 
                                'mmdet3d.engine.hooks.wandb_logger_hook',
-                               'mmdet3d.evaluation.metrics.general_3ddet_metric'], allow_failed_imports=False)
+                               'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)
 dataset = dict(type='OSDaR23Dataset')
 dataset_type = 'OSDaR23Dataset'
-data_root = 'data/osdar23/'
+data_root = 'data/osdar23_test/'
 class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
 # According to Robosense M1+ specifications (Range: 200m, Horizontal FOV: 120°)
 input_modality = dict(use_lidar=True, use_camera=False)
@@ -14,6 +14,7 @@ metainfo = dict(classes=class_names)
 # Method 1: simply set the data root and let the file I/O module
 # automatically infer from prefix (not support LMDB and Memcache yet)
 
+# This thing is for reading and writing data from/to S3
 # data_root = 's3://openmmlab/datasets/detection3d/kitti/'
 
 # Method 2: Use backend_args, file_client_args in versions before 1.1.0
@@ -30,11 +31,9 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_difficulty=[-1],
-        filter_by_min_points=dict(Car=5, Pedestrian=10, Cyclist=10)),
+        # filter_by_min_points=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5),
     classes=class_names,
-    sample_groups=dict(Car=12, Pedestrian=6, Cyclist=6),
-    points_loader=dict(
+    sample_groups=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5),
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
@@ -62,7 +61,10 @@ test_pipeline = [
         load_dim=4,
         use_dim=4,
         backend_args=backend_args),
-    dict(type='Pack3DDetInputs', keys=['points'])
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(
+        type='Pack3DDetInputs',
+        keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 # construct a pipeline for data and gt loading in show function
 # please keep its loading function consistent with test_pipeline (e.g. client)
@@ -73,10 +75,12 @@ eval_pipeline = [
         load_dim=4,
         use_dim=4,
         backend_args=backend_args),
-    dict(type='Pack3DDetInputs', keys=['points'])
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(type='Pack3DDetInputs',
+         keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 train_dataloader = dict(
-    batch_size=6,
+    batch_size=4,
     num_workers=4,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -107,7 +111,7 @@ val_dataloader = dict(
         data_root=data_root,
         data_prefix=dict(pts='points'),
         ann_file='kitti_infos_val.pkl',
-        pipeline=test_pipeline,
+        pipeline=eval_pipeline,
         modality=input_modality,
         test_mode=True,
         metainfo=metainfo,
@@ -131,11 +135,11 @@ test_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 val_evaluator = dict(
-    type='General_3dDet_Metric',
+    type='General_3dDet_Metric_MMLab',
     ann_file=data_root + 'kitti_infos_val.pkl',
-    metric='bev',
-    class_names=class_names,
-    output_dir='work_dirs/osdar23-3d',
+    metric='det3d',
+    classes=class_names,
+    output_dir='data/osdar23/training/pointpillars_test_delete_after_use/',
     backend_args=backend_args)
 test_evaluator = val_evaluator
 

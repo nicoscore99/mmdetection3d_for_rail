@@ -110,19 +110,20 @@ class WandbLoggerHook(LoggerHook):
                         batch_idx: int,
                         data_batch: DATA_BATCH = None,
                         outputs: Optional[dict] = None) -> None:
+
+        log_output = {'train': outputs}
+        if outputs is not None:
+            self._wandb.log(log_output, step=runner.iter, commit=self._commit)
+
+    def after_val_iter(self,
+                       runner,
+                       batch_idx: int,
+                       data_batch: DATA_BATCH = None,
+                       outputs: Optional[dict] = None) -> None:
         
-        tag, log_str = runner.log_processor.get_log_after_iter(runner, batch_idx, 'train')
-
-        if tag:
-            self._wandb.log(tag, step=runner.iter, commit=self._commit)
-
-    def after_train_epoch(self, runner: Runner):
-
-        # Log the tags
-        tags = runner.log_processor.get_log_after_epoch(runner, len(runner.train_dataloader), 'val')
-
-        print("print tags after epoch: ", tags)
-        print("tags type: ", type(tags))
+        log_output = {'val': outputs}
+        if outputs is not None:
+            self._wandb.log(log_output, step=runner.iter, commit=self._commit)
 
     def after_val_epoch(self, 
                         runner: Runner, 
@@ -168,38 +169,50 @@ class WandbLoggerHook(LoggerHook):
         self._wandb.finish()
 
     def log_roc_curve(self, runner: Runner, curve: dict, level: str) -> None:
-
-        if not 'all_classes' in curve.keys():
-            raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
         
-        curve = curve['all_classes']
-        data = np.column_stack((np.array(curve['fpr']), np.array(curve['tpr'])))
-        table = wandb.Table(data=data, columns=["FPR", "TPR"])
-        self._wandb.log({"ROC Curve": wandb.plot.line(table, "FPR", "TPR")})
-        print("Logged ROC curve")
+        try:
+            # Check if there is a key which is not called 'all_classes' in curve.keys()
+            if any([key for key in curve.keys() if key != 'all_classes']):
+                raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
+            
+            curve = curve['all_classes']
+            data = np.column_stack((np.array(curve['fpr']), np.array(curve['tpr'])))
+            table = wandb.Table(data=data, columns=["FPR", "TPR"])
+            self._wandb.log({"ROC Curve": wandb.plot.line(table, "FPR", "TPR")})
+
+        except Exception as e:
+            print(f"Error while logging ROC curve: {e}")
 
 
     def log_prec_curve(self, runner: Runner, curve: dict, level: str) -> None:
-
-        if not 'all_classes' in curve.keys():
-            raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
         
-        curve = curve['all_classes']
-        data = np.column_stack((np.array(curve['recall']), np.array(curve['precision'])))
-        table = wandb.Table(data=data, columns=["Recall", "Precision"])
-        self._wandb.log({"Precision-Recall Curve": wandb.plot.line(table, "Recall", "Precision")})
+        try:
+            # Check if there is a key which is not called 'all_classes' in curve.keys()
+            if any([key for key in curve.keys() if key != 'all_classes']):
+                raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
+            
+            curve = curve['all_classes']
+            data = np.column_stack((np.array(curve['recall']), np.array(curve['precision'])))
+            table = wandb.Table(data=data, columns=["Recall", "Precision"])
+            self._wandb.log({"Precision-Recall Curve": wandb.plot.line(table, "Recall", "Precision")})
+
+        except Exception as e:
+            print(f"Error while logging precision-recall curve: {e}")
+
+    def idx_to_lables(self, incices: np.array, labels: np.array) -> np.array:
+        return np.array([labels[idx] for idx in incices])
 
     def log_cm_curve(self, runner: Runner, curve: dict, level: str) -> None:
 
-        if not 'all_classes' in curve.keys():
-            raise ValueError('The case to plot different class dependent curves was not yet implemented here.')
-    
+        try:     
+            _true = self.idx_to_lables(curve['y_true'], curve['labels'])
+            _pred = self.idx_to_lables(curve['y_pred'], curve['labels'])
 
-        self._wandb.log({'cm': wandb.sklearn.plot_confusion_matrix(y_true=curve['y_true'], 
-                                                                   y_pred=curve['y_pred'],
-                                                                   labels=curve['labels'])},
-                        step=runner.iter)
-    
-        print("Logged confusion matrix")
-
+            self._wandb.log({'cm': wandb.sklearn.plot_confusion_matrix(y_true=_true, 
+                                                                    y_pred=_pred,
+                                                                    labels=curve['classes'])},
+                            step=runner.iter)
+            
+        except Exception as e:
+            print(f"Error while logging confusion matrix: {e}")
 

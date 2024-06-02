@@ -875,7 +875,15 @@ class LoadAnnotations3D(LoadAnnotations):
             dict: The dict containing loaded 3D bounding box annotations.
         """
 
-        results['gt_bboxes_3d'] = results['ann_info']['gt_bboxes_3d']
+        # Added by Nicolas Stillhard on Jun 2nd 2024
+        if 'ann_info' in results:
+            results['gt_bboxes_3d'] = results['ann_info']['gt_bboxes_3d']
+        elif 'eval_ann_info' in results:
+            results['gt_bboxes_3d'] = results['eval_ann_info']['gt_bboxes_3d']
+        else:
+            raise KeyError(
+                'Cannot find 3D bounding box annotations in results')
+
         return results
 
     def _load_bboxes_depth(self, results: dict) -> dict:
@@ -888,8 +896,20 @@ class LoadAnnotations3D(LoadAnnotations):
             dict: The dict containing loaded 2.5D bounding box annotations.
         """
 
-        results['depths'] = results['ann_info']['depths']
-        results['centers_2d'] = results['ann_info']['centers_2d']
+        # results['depths'] = results['ann_info']['depths']
+        # results['centers_2d'] = results['ann_info']['centers_2d']
+
+        # Added by Nicolas Stillhard on Jun 2nd 2024
+        if 'ann_info' in results:
+            results['depths'] = results['ann_info']['depths']
+            results['centers_2d'] = results['ann_info']['centers_2d']
+        elif 'eval_ann_info' in results:
+            results['depths'] = results['eval_ann_info']['depths']
+            results['centers_2d'] = results['eval_ann_info']['centers_2d']
+        else:
+            raise KeyError(
+                'Cannot find 2.5D bounding box annotations in results')
+
         return results
 
     def _load_labels_3d(self, results: dict) -> dict:
@@ -902,7 +922,17 @@ class LoadAnnotations3D(LoadAnnotations):
             dict: The dict containing loaded label annotations.
         """
 
-        results['gt_labels_3d'] = results['ann_info']['gt_labels_3d']
+        # results['gt_labels_3d'] = results['ann_info']['gt_labels_3d']
+
+        # Added by Nicolas Stillhard on Jun 2nd 2024
+        if 'ann_info' in results:
+            results['gt_labels_3d'] = results['ann_info']['gt_labels_3d']
+        elif 'eval_ann_info' in results:
+            results['gt_labels_3d'] = results['eval_ann_info']['gt_labels_3d']
+        else:
+            raise KeyError(
+                'Cannot find 3D label annotations in results')
+
         return results
 
     def _load_attr_labels(self, results: dict) -> dict:
@@ -914,7 +944,17 @@ class LoadAnnotations3D(LoadAnnotations):
         Returns:
             dict: The dict containing loaded label annotations.
         """
-        results['attr_labels'] = results['ann_info']['attr_labels']
+        # results['attr_labels'] = results['ann_info']['attr_labels']
+
+        # Added by Nicolas Stillhard on Jun 2nd 2024
+        if 'ann_info' in results:
+            results['attr_labels'] = results['ann_info']['attr_labels']
+        elif 'eval_ann_info' in results:
+            results['attr_labels'] = results['eval_ann_info']['attr_labels']
+        else:
+            raise KeyError(
+                'Cannot find attribute label annotations in results')
+
         return results
 
     def _load_masks_3d(self, results: dict) -> dict:
@@ -1030,7 +1070,13 @@ class LoadAnnotations3D(LoadAnnotations):
             dict: The dict contains loaded bounding box annotations.
         """
 
-        results['gt_bboxes'] = results['ann_info']['gt_bboxes']
+        # Added by Nicolas Stillhard on Jun 2nd 2024
+        if 'ann_info' in results:
+            results['gt_bboxes'] = results['ann_info']['gt_bboxes']
+        elif 'eval_ann_info' in results:
+            results['gt_bboxes'] = results['eval_ann_info']['gt_bboxes']
+        else:
+            raise ValueError('No available annotation information to load')
 
     def _load_labels(self, results: dict) -> None:
         """Private function to load label annotations.
@@ -1041,7 +1087,14 @@ class LoadAnnotations3D(LoadAnnotations):
         Returns:
             dict: The dict contains loaded label annotations.
         """
-        results['gt_bboxes_labels'] = results['ann_info']['gt_bboxes_labels']
+        
+        # Added by Nicolas Stillhard on Jun 2nd 2024
+        if 'ann_info' in results:
+            results['gt_labels'] = results['ann_info']['gt_labels']
+        elif 'eval_ann_info' in results:
+            results['gt_labels'] = results['eval_ann_info']['gt_labels']
+        else:
+            raise ValueError('No available annotation information to load')
 
     def transform(self, results: dict) -> dict:
         """Function to load multiple types annotations.

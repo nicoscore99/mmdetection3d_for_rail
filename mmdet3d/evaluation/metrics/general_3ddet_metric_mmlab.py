@@ -197,22 +197,32 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         dt_annos_valid, perc = self.filter_valid_dt_annos(dt_annos)
         print("Percentage of valid bounding boxes for detections: ", perc)
 
-
-        self.evaluator = EvaluatorMetrics(gt_annos_valid, dt_annos_valid, self.classes, metric=self.metric)
-
         evaluation_results_dict = dict() # Contains all evaluation results
         curves_dict = dict() # Contains all curves
 
-        # evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
-        #                                                                                  class_accuracy_requirements='hard')
+        self.evaluator = EvaluatorMetrics(gt_annos_valid, dt_annos_valid, self.classes, metric=self.metric)
 
-        # evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
-        #                                                                                class_accuracy_requirements='hard')
+        # Only perform the evaluation when there is at least 10 gt instances and 10 dt instances
+        
+        if not self.evaluator.total_gt_instances >= 10:
+            print_log("The number of gt instances is less than 10, skip evaluation.")
+            return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
+        
+        if not self.evaluator.total_dt_instances >= 10:
+            print_log("The number of dt instances is less than 10, skip evaluation.")
+            return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
+        
+        evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
+                                                                                         class_accuracy_requirements='hard')
+
+        evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
+                                                                                       class_accuracy_requirements='hard',
+                                                                                       class_idx=range(len(self.classes)))
 
         curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=0.5)
         curves_dict['roc'] = self.evaluator.roc_curve(iou_level=0.5)
         curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)        
-        
+            
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
     def convert_from_ann_file(self, ann_file: dict) -> dict:
@@ -425,6 +435,13 @@ class EvaluatorMetrics():
         
         self.threshold_specific_results_dict = dict()
 
+    @property
+    def total_gt_instances(self) -> int:
+        return sum([len(self._gt_annos_valid[key].bboxes_3d) for key in self._gt_annos_valid.keys()])
+    
+    @property
+    def total_dt_instances(self) -> int:
+        return sum([len(self._dt_annos_valid[key].bboxes_3d) for key in self._dt_annos_valid.keys()])
 
     def val_batch_evaluation(self, 
                              iou_threshold: float) -> dict:
@@ -538,9 +555,6 @@ class EvaluatorMetrics():
                                         iou_level: Union[float, List[float]], 
                                         class_accuracy_requirements: Union[str, List[str]] = 'easy',
                                         class_idx: Union[int, List[int]] = []):
-        
-        print("Debug: class_idx: ", class_idx)
-        print("Debug: self._classes: ", self._classes)
 
         if isinstance(iou_level, float):
             iou_level = [iou_level]
@@ -627,31 +641,44 @@ class EvaluatorMetrics():
                 self.val_batch_evaluation(level)
             _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
 
-            class_dict = dict()
-            if class_idx:
-                for cls_idx in class_idx:
-                    _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
-                    y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
-                    precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+            # class_dict = dict()
+            # if class_idx:
+            #     for cls_idx in class_idx:
+            #         _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
+            #         y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
+            #         precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
 
-                    class_dict[self._classes[cls_idx]] = {
-                        'precision': precision,
-                        'recall': recall,
-                        'y_true': y_pred,
-                        'y_probas': y_score,
-                        'labels': self._classes
-                    }
-            else:
-                y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
-                precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
-                class_dict['all_classes'] = {
-                    'precision': precision,
-                    'recall': recall,
-                    'y_true': y_pred,
-                    'y_probas': y_score,
-                    'labels': self._classes
-                }
+            #         class_dict[self._classes[cls_idx]] = {
+            #             'precision': precision,
+            #             'recall': recall,
+            #             'y_true': y_pred,
+            #             'y_probas': y_score,
+            #             'labels': self._classes
+            #         }
+            # else:
+            #     y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+            #     precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+            #     class_dict['all_classes'] = {
+            #         'precision': precision,
+            #         'recall': recall,
+            #         'y_true': y_pred,
+            #         'y_probas': y_score,
+            #         'labels': self._classes
+            #     }
         
+            # level_dict[level] = class_dict
+
+            class_dict = dict()
+            y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+            precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+            class_dict['all_classes'] = {
+                'precision': precision,
+                'recall': recall,
+                'y_true': y_pred,
+                'y_probas': y_score,
+                'labels': self._classes
+            }
+
             level_dict[level] = class_dict
 
         return level_dict                  
@@ -679,31 +706,45 @@ class EvaluatorMetrics():
                 self.val_batch_evaluation(level)
             _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
 
-            class_dict = dict()
-            if class_idx:
-                for cls_idx in class_idx:
-                    _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
-                    y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
-                    fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
-                    class_dict[self._classes[cls_idx]] = {
-                        'fpr': fpr,
-                        'tpr': tpr,
-                        'y_true': y_pred,
-                        'y_probas': y_score,
-                        'labels': self._classes
-                    }
-            else:
-                y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
-                fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
-                class_dict['all_classes'] = {
-                    'fpr': fpr,
-                    'tpr': tpr,
-                    'y_true': y_pred,
-                    'y_probas': y_score,
-                    'labels': self._classes
-                }
+            # class_dict = dict()
+            # if class_idx:
+            #     for cls_idx in class_idx:
+            #         _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
+            #         y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
+            #         fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
+            #         class_dict[self._classes[cls_idx]] = {
+            #             'fpr': fpr,
+            #             'tpr': tpr,
+            #             'y_true': y_pred,
+            #             'y_probas': y_score,
+            #             'labels': self._classes
+            #         }
+
+            #     level_dict[level] = class_dict
+            # else:
+            #     y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+            #     fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
+            #     class_dict['all_classes'] = {
+            #         'fpr': fpr,
+            #         'tpr': tpr,
+            #         'y_true': y_pred,
+            #         'y_probas': y_score,
+            #         'labels': self._classes
+            #     }
         
-            level_dict[level] = class_dict
+            #     level_dict[level] = class_dict
+
+            class_dict = dict()
+
+            y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+            fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
+            class_dict['all_classes'] = {
+                'fpr': fpr,
+                'tpr': tpr,
+                'y_true': y_pred,
+                'y_probas': y_score,
+                'labels': self._classes
+            }
 
         return level_dict
 
@@ -739,10 +780,13 @@ class EvaluatorMetrics():
             'y_true': _y_true,
             'y_pred': _y_pred,
             'labels': _labels,
+            'classes': self._classes,
             'cm': confusion_matrix
         }
 
-        return confusion_matrix_dict
+        level_dict = dict()
+        level_dict[iou_level] = confusion_matrix_dict
+        return level_dict
 
     def confusion_matrix_plot(self,
                               iou_level: float):

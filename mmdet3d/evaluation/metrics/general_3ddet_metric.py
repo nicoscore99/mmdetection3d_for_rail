@@ -363,9 +363,6 @@ class MetricEvaluation(ABC):
             _dt_annos (dict): The detected annotations.
             _classes_list (List[str]): The list of class names.
             _output_dir (str): The output directory for the evaluation results.
-
-
-
         """
         
         self.gt_annos = _gt_annos

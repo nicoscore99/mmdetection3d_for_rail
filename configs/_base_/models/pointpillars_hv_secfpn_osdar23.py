@@ -1,6 +1,7 @@
-voxel_size = [0.2, 0.2, 4]
-point_cloud_range = [0, -43.2, -3, 99.20, 42.2, 1]
-# point_cloud_range = [0, -65, -3, 200, 65, 1]
+voxel_size = [0.16, 0.16, 4]
+# voxel_size = [0.2, 0.2, 4]
+point_cloud_range = [0, -39.68, -3, 69.12, 39.68, 1]
+# point_cloud_range = [0, -43.2, -3, 99.20, 42.2, 1]
 # [1250, 812.5, 1]
 model = dict(
     type='VoxelNet',
@@ -34,19 +35,15 @@ model = dict(
         out_channels=[128, 128, 128]),
     bbox_head=dict(
         type='Anchor3DHead',
-        num_classes=3,
+        num_classes=6,
         in_channels=384,
         feat_channels=384,
         use_direction_classifier=True,
         assign_per_class=True,
         anchor_generator=dict(
             type='AlignedAnchor3DRangeGenerator',
-            ranges=[
-                point_cloud_range,
-                point_cloud_range,
-                point_cloud_range,
-            ],
-            sizes=[[0.8, 0.6, 1.73], [1.76, 0.6, 1.73], [3.9, 1.6, 1.56]],
+            ranges=[point_cloud_range, point_cloud_range, point_cloud_range, point_cloud_range, point_cloud_range, point_cloud_range],
+            sizes=[[0.89, 0.86, 1.89], [4.3, 3.07, 2.79], [62.43, 4.01, 4.27], [1.72, 0.89, 1.27], [0.45, 0.45, 0.41], [1.62, 1.14, 4.67]], # length, width, height for ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
             rotations=[0, 1.57],
             reshape_out=False),
         diff_rad_by_sin=True,
@@ -72,14 +69,35 @@ model = dict(
                 neg_iou_thr=0.35,
                 min_pos_iou=0.35,
                 ignore_iof_thr=-1),
-            dict(  # for Cyclist
+            dict(  # for Car
+                type='Max3DIoUAssigner',
+                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+                pos_iou_thr=0.6,
+                neg_iou_thr=0.45,
+                min_pos_iou=0.45,
+                ignore_iof_thr=-1),
+            dict(  # for Train
+                type='Max3DIoUAssigner',
+                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+                pos_iou_thr=0.6,
+                neg_iou_thr=0.45,
+                min_pos_iou=0.45,
+                ignore_iof_thr=-1),
+            dict(  # for Bike
                 type='Max3DIoUAssigner',
                 iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
                 pos_iou_thr=0.5,
                 neg_iou_thr=0.35,
                 min_pos_iou=0.35,
                 ignore_iof_thr=-1),
-            dict(  # for Car
+            dict(  # for Unknown
+                type='Max3DIoUAssigner',
+                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+                pos_iou_thr=0.6,
+                neg_iou_thr=0.45,
+                min_pos_iou=0.45,
+                ignore_iof_thr=-1),
+            dict(  # for Dontcare
                 type='Max3DIoUAssigner',
                 iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
                 pos_iou_thr=0.6,
