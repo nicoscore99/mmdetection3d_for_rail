@@ -7,14 +7,11 @@ import wandb
 from typing import Dict, Optional, Union
 from collections import OrderedDict
 import numpy as np
-import torch
-from collections import OrderedDict
 # Copyright (c) OpenMMLab. All rights reserved.
 from mmengine.dataset import BaseDataset
 from mmengine.hooks import Hook, LoggerHook
 from mmengine.model import is_model_wrapper
 from mmengine.runner import Runner
-from mmengine.visualization import WandbVisBackend
 
 from mmdet3d.datasets.transforms import ObjectSample
 from mmdet3d.registry import HOOKS
@@ -110,8 +107,8 @@ class WandbLoggerHook(LoggerHook):
                         batch_idx: int,
                         data_batch: DATA_BATCH = None,
                         outputs: Optional[dict] = None) -> None:
-
-        log_output = {'train': outputs}
+        
+        log_output = {'train': outputs}       
         if outputs is not None:
             self._wandb.log(log_output, step=runner.iter, commit=self._commit)
 
@@ -153,20 +150,37 @@ class WandbLoggerHook(LoggerHook):
         assert osp.exists(path), f'Path {path} does not exist'
 
         all_files = os.listdir(path)
-        wandb_file = [f for f in all_files if f.endswith('.wandb')]
-        assert len(wandb_file) == 1, f'Expected 1 wandb file, got {len(wandb_file)}'
-        wandb_file_abspath = osp.join(path, wandb_file[0])
+        
+        print(f'Path: {path}')
+        
+        checkpoint_files = [f for f in all_files if f.endswith('.pth') or f.endswith('.pt')]
+        
+        print(f'Found {len(checkpoint_files)} checkpoint files in the directory')
+        
+        # If there are multiple, take the one with the largest epoch number
+        if len(checkpoint_files) > 1:
+            checkpoint_files = sorted(checkpoint_files, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+            wandb_file = checkpoint_files[-1]
+        elif len(checkpoint_files) == 0:
+            raise ValueError('No checkpoint files found in the directory')            
+        else:
+            wandb_file = checkpoint_files[0]
+        
+        wandb_file_abspath = osp.join(path, wandb_file)
         return wandb_file_abspath
 
     def after_run(self, runner: Runner) -> None:
-        if self._log_artifact:
-            wandb_artifact = self._wandb.Artifact(name='artifacts', type='model')
-            latest_run_directory = osp.join(self._save_dir, 'wandb', 'latest-run')
-            wandb_artifact.add_file(self.get_wandb_file(latest_run_directory))
-            self.run.log_artifact(wandb_artifact)
-
+        try:
+            if self._log_artifact:
+                wandb_artifact = self._wandb.Artifact(name='artifacts', type='model')
+                wandb_artifact.add_file(self.get_wandb_file(self._save_dir))
+                self.run.log_artifact(wandb_artifact)
+        except Exception as e:
+            print(f"Error while logging artifact: {e}")
         # Finish the run and close the wandb logger
         self._wandb.finish()
+        
+        print("Done. WandB Logging is finished.")
 
     def log_roc_curve(self, runner: Runner, curve: dict, level: str) -> None:
         
