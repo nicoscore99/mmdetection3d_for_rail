@@ -76,8 +76,9 @@ class WandbLoggerHook(LoggerHook):
         self._wandb = wandb
 
         # Wandb login
-        key_configured = self._wandb.login(key=self.wandb_auth_config['api_key'])        
-        assert key_configured, '[WandbLoggerHook] wandb api key not configured'
+        if not self._wandb.login():
+            key_configured = self._wandb.login(key=self.wandb_auth_config['api_key'])        
+            assert key_configured, '[WandbLoggerHook] wandb api key not configured'
 
         # Check if wandb is already initialized
 

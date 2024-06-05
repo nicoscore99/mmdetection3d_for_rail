@@ -66,7 +66,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  format_only: bool = False,
                  submission_prefix: Optional[str] = None,
                  collect_device: str = 'cpu',
-                 save_graphics: Optional[bool] = False,
+                 save_graphics: Optional[bool] = True,
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  backend_args: Optional[dict] = None) -> None:
@@ -95,7 +95,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         # For now, metric should just be one. Don't select both.
         self.metric = metric
 
-        self.difficulty_levels = [0.1, 0.9, 1.0]
+        self.difficulty_levels = [0.3, 0.5, 0.7]
         
         # Check that difficulty levels are not empty
         if not self.difficulty_levels:
@@ -200,7 +200,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         evaluation_results_dict = dict() # Contains all evaluation results
         curves_dict = dict() # Contains all curves
 
-        self.evaluator = EvaluatorMetrics(gt_annos_valid, dt_annos_valid, self.classes, metric=self.metric)
+        self.evaluator = EvaluatorMetrics(gt_annos_valid=gt_annos_valid, dt_annos_valid=dt_annos_valid, classes=self.classes, metric=self.metric)
 
         # Only perform the evaluation when there is at least 10 gt instances and 10 dt instances
         
@@ -221,7 +221,12 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=0.5)
         curves_dict['roc'] = self.evaluator.roc_curve(iou_level=0.5)
-        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)        
+        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)
+
+        if self.save_graphics:
+            self.save_plot(plot=self.evaluator.precision_recall_plot(iou_level=0.5), filename = 'precision_recall_plot.png')
+            self.save_plot(plot=self.evaluator.roc_plot(iou_level=0.5), filename = 'roc_plot.png')
+            self.save_plot(plot=self.evaluator.confusion_matrix_plot(iou_level=0.5), filename = 'confusion_matrix_plot.png')
             
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
@@ -405,6 +410,13 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         return annos_valid, percentage
     
+    def save_plot(self,
+                plot: Union[sk_metrics.ConfusionMatrixDisplay, sk_metrics.PrecisionRecallDisplay, sk_metrics.RocCurveDisplay],
+                filename: str) -> None:
+
+        save_dir = self.output_dir + filename
+
+        plt.savefig(save_dir)
 
 class EvaluatorMetrics():
 
@@ -488,6 +500,15 @@ class EvaluatorMetrics():
         }
 
         # print("Debug: threshold_specific_results: ", threshold_specific_results)
+
+        # # print("Debug: threshold_specific_results: ", threshold_specific_results)
+
+        # # save these values into a file
+        # filename = 'threshold_specific_results.txt'
+        # with open(filename, 'w') as f:
+        #     for value in threshold_specific_results.values():
+        #         val_str = ', '.join(map(str, value.tolist()))
+        #         f.write(val_str + '\n')
 
         # raise NotImplementedError
 
@@ -619,6 +640,12 @@ class EvaluatorMetrics():
             class_dict = dict()
             for class_accuracy_requirement in class_accuracy_requirements:
                 y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+
+                # print("Debug: y_pred: ", y_pred)
+                # print("Debug: y_score: ", y_score)
+
+                # raise NotImplementedError
+
                 class_dict[class_accuracy_requirement] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
 
             level_dict[level] = class_dict
@@ -681,14 +708,15 @@ class EvaluatorMetrics():
 
             level_dict[level] = class_dict
 
-        return level_dict                  
+        return level_dict
         
     def precision_recall_plot(self,
                               iou_level: float):
         
         level_dict = self.precision_recall_curve(iou_level=iou_level)
         precision, recall = level_dict[iou_level]['all_classes']['precision'], level_dict[iou_level]['all_classes']['recall']
-        return sk_metrics.PrecisionRecallDisplay(precision=precision, recall=recall, estimator_name='Precision-Recall Curve')
+        disp = sk_metrics.PrecisionRecallDisplay(precision=precision, recall=recall, estimator_name='Precision-Recall Curve')
+        return disp.plot()
 
     def roc_curve(self,
                   iou_level: Union[float, List[float]],
@@ -746,6 +774,8 @@ class EvaluatorMetrics():
                 'labels': self._classes
             }
 
+            level_dict[level] = class_dict
+
         return level_dict
 
     def roc_plot(self,
@@ -753,7 +783,9 @@ class EvaluatorMetrics():
         
         level_dict = self.roc_curve(iou_level=iou_level)
         fpr, tpr = level_dict[iou_level]['all_classes']['fpr'], level_dict[iou_level]['all_classes']['tpr']
-        return sk_metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, estimator_name='ROC Curve')
+        roc_auc = sk_metrics.auc(fpr, tpr)
+        disp = sk_metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, estimator_name='ROC Curve', roc_auc=roc_auc)
+        return disp.plot()
 
     def confusion_matrix(self,
                          iou_level: float):
@@ -763,7 +795,8 @@ class EvaluatorMetrics():
     
         # print("Debug: self.threshold_specific_results_dict[iou_level]: ", self.threshold_specific_results_dict[iou_level]['assigned_labels'])
 
-        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_labels'] != -1
+        # relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_labels'] != -1
+        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_gt_inds'] > 0
         # print("Debug: relevant_inds: ", relevant_inds)
 
         _y_true = self.threshold_specific_results_dict[iou_level]['assigned_labels'][relevant_inds]
@@ -772,6 +805,8 @@ class EvaluatorMetrics():
         _y_pred = self.threshold_specific_results_dict[iou_level]['dt_labels'][relevant_inds]
         # print("Debug: _y_pred: ", _y_pred)
 
+        print("Debug: _y_true: ", _y_true)
+        print("Debug: _y_pred: ", _y_pred)
         _labels = range(len(self._classes))
 
         confusion_matrix = sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=_labels)
@@ -790,7 +825,8 @@ class EvaluatorMetrics():
 
     def confusion_matrix_plot(self,
                               iou_level: float):
-        cm_dict = self.confusion_matrix(iou_level)
-        cm = cm_dict['cm']
-        return sk_metrics.ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self._classes)     
 
+        cm_dict = self.confusion_matrix(iou_level)
+        cm = cm_dict[iou_level]['cm']
+        disp = sk_metrics.ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self._classes)
+        return disp.plot(include_values=True, cmap='viridis')
