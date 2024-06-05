@@ -368,8 +368,13 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         num_bbox_before = sum([len(annos[key].bboxes_3d) for key in annos.keys()])
         num_bbox_after = sum([len(annos_valid[key].bboxes_3d) for key in annos_valid.keys()])
-        percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
-
+        # Devision by zero check
+        if num_bbox_before == 0:
+            percentage = 0.0
+        else:
+            print("Debug: num_bbox_before: ", num_bbox_before)
+            percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
+            
         return annos_valid, percentage
     
     def filter_valid_dt_annos(self, annos: dict) -> dict:
@@ -406,7 +411,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         num_bbox_before = sum([len(annos[key].bboxes_3d) for key in annos.keys()])
         num_bbox_after = sum([len(annos_valid[key].bboxes_3d) for key in annos_valid.keys()])
-        percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
+        if num_bbox_before == 0:
+            percentage = 0.0
+        else:
+            percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
 
         return annos_valid, percentage
     

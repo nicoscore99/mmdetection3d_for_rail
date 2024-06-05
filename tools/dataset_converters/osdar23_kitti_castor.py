@@ -387,6 +387,11 @@ class OSDaR23_2_KITTI_Converter(object):
             if osp.exists(out_path):
                 print_log(f'File {out_path} already exists', logger='current')
                 continue
+            
+            # If the file does not exist, create it in any case
+            with open(out_path, 'w') as file:
+                print_log(f'Created new file {out_path}.')
+                pass
 
             for obj_key, obj_dict in objects_in_frame.items():
                 object_data_dict = obj_dict['object_data']
