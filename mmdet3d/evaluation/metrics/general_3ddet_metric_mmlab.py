@@ -66,7 +66,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  format_only: bool = False,
                  submission_prefix: Optional[str] = None,
                  collect_device: str = 'cpu',
-                 save_graphics: Optional[bool] = True,
+                 save_graphics: Optional[bool] = False,
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  backend_args: Optional[dict] = None) -> None:
@@ -351,6 +351,13 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         for key in annos.keys():
             _bbox_3d = annos[key].bboxes_3d
+            
+            # Check if any dimension is empty
+            if _bbox_3d.size(0) == 0:
+                continue
+            elif _bbox_3d.size(1) == 0:
+                continue
+            
             bbox_3d_center = _bbox_3d[:, :3]
             valid_inds = ((bbox_3d_center[:, 0] >= self.pcd_limit_range[0]) &
                           (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
@@ -620,10 +627,12 @@ class EvaluatorMetrics():
             for class_accuracy_requirement in class_accuracy_requirements:
                 
                 for cls_idx in class_idx:
-
                     _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
                     y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_class_filtered_dict)
-                    class_dict[self._classes[cls_idx]] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
+                    if y_pred.nelement() > 0 and y_score.nelement() > 0:
+                        class_dict[self._classes[cls_idx]] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
+                    else:
+                        class_dict[self._classes[cls_idx]] = 0.0
             
             level_dict[level] = class_dict
 
@@ -648,14 +657,10 @@ class EvaluatorMetrics():
             class_dict = dict()
             for class_accuracy_requirement in class_accuracy_requirements:
                 y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-
-                # print("Debug: y_pred: ", y_pred)
-                # print("Debug: y_score: ", y_score)
-
-                # raise NotImplementedError
-
-                class_dict[class_accuracy_requirement] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
-
+                if y_pred.nelement() > 0 and y_score.nelement() > 0:
+                    class_dict[class_accuracy_requirement] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
+                else:
+                    class_dict[class_accuracy_requirement] = 0.0                
             level_dict[level] = class_dict
 
         return level_dict
@@ -801,20 +806,9 @@ class EvaluatorMetrics():
         if not iou_level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(iou_level)
     
-        # print("Debug: self.threshold_specific_results_dict[iou_level]: ", self.threshold_specific_results_dict[iou_level]['assigned_labels'])
-
-        # relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_labels'] != -1
         relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_gt_inds'] > 0
-        # print("Debug: relevant_inds: ", relevant_inds)
-
         _y_true = self.threshold_specific_results_dict[iou_level]['assigned_labels'][relevant_inds]
-        # print("Debug: _y_true: ", _y_true)
-
         _y_pred = self.threshold_specific_results_dict[iou_level]['dt_labels'][relevant_inds]
-        # print("Debug: _y_pred: ", _y_pred)
-
-        print("Debug: _y_true: ", _y_true)
-        print("Debug: _y_pred: ", _y_pred)
         _labels = range(len(self._classes))
 
         confusion_matrix = sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=_labels)

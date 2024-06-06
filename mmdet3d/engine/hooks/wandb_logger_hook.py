@@ -128,7 +128,7 @@ class WandbLoggerHook(LoggerHook):
                         metrics: Optional[Dict[str, float]] = None) -> None:
 
         if metrics['General 3D Det metric mmlab/evaluations'].keys():
-            self._wandb.log(metrics[''], step=runner.iter, commit=self._commit)
+            self._wandb.log(metrics['General 3D Det metric mmlab/evaluations'], step=runner.iter, commit=self._commit)
 
         curves = metrics['General 3D Det metric mmlab/curves']
         if curves.keys():
