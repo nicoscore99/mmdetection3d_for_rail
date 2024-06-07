@@ -43,6 +43,9 @@ class WandbLoggerHook(LoggerHook):
             'cm': self.log_cm_curve
         }
 
+        self.train_iter_outputs = None
+        self.val_iter_outputs = None
+
         self._save_dir = save_dir
         self._init_kwargs = init_kwargs
         self._yaml_config_path = yaml_config_path
@@ -109,9 +112,32 @@ class WandbLoggerHook(LoggerHook):
                         data_batch: DATA_BATCH = None,
                         outputs: Optional[dict] = None) -> None:
         
-        log_output = {'train': outputs}       
-        if outputs is not None:
-            self._wandb.log(log_output, step=runner.iter, commit=self._commit)
+        # log_output = {'train': outputs}       
+        # if outputs is not None:
+        #     self._wandb.log(log_output, step=runner.iter, commit=self._commit)
+
+        # Save the outputs for the next iteration
+        if outputs is None:
+            self.train_iter_outputs = outputs
+        else:
+            # Assert that the keys are the same
+            assert self.train_iter_outputs.keys() == outputs.keys(), 'The keys of the outputs are not the same'
+
+            # Add the the values of the previous iterations with the current ones
+            for key in self.train_iter_outputs.keys():
+                self.train_iter_outputs[key] += outputs[key]
+            
+    def after_train_epoch(self,
+                            runner: Runner,
+                            metrics: Optional[Dict[str, float]] = None) -> None:
+                            
+        # log the outputs accumulated over the epoch
+        outputs = {'train': self.train_iter_outputs}
+        if self.train_iter_outputs is not None:
+            self._wandb.log(outputs, step=runner.epoch, commit=self._commit)
+
+        # Reset the outputs
+        self.train_iter_outputs = None
 
     def after_val_iter(self,
                        runner,
@@ -119,9 +145,21 @@ class WandbLoggerHook(LoggerHook):
                        data_batch: DATA_BATCH = None,
                        outputs: Optional[dict] = None) -> None:
         
-        log_output = {'val': outputs}
-        if outputs is not None:
-            self._wandb.log(log_output, step=runner.iter, commit=self._commit)
+        # log_output = {'val': outputs}
+        # if outputs is not None:
+        #     self._wandb.log(log_output, step=runner.iter, commit=self._commit)
+
+        # Save the outputs for the next iteration
+
+        if outputs is None:
+            self.val_iter_outputs = outputs
+        else:
+            # Assert that the keys are the same
+            assert self.val_iter_outputs.keys() == outputs.keys(), 'The keys of the outputs are not the same'
+
+            # Add the the values of the previous iterations with the current ones
+            for key in self.val_iter_outputs.keys():
+                self.val_iter_outputs[key] += outputs[key]
 
     def after_val_epoch(self, 
                         runner: Runner, 
