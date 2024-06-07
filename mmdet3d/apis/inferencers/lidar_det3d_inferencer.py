@@ -52,11 +52,13 @@ class LidarDet3DInferencer(Base3DInferencer):
                  model: Union[ModelType, str, None] = None,
                  weights: Optional[str] = None,
                  device: Optional[str] = None,
+                 which_pipeline: Optional[str] = None,
                  scope: str = 'mmdet3d',
                  palette: str = 'none') -> None:
         # A global counter tracking the number of frames processed, for
         # naming of the output results
         self.num_visualized_frames = 0
+        self.which_pipeline = which_pipeline
         super(LidarDet3DInferencer, self).__init__(
             model=model,
             weights=weights,
@@ -103,11 +105,17 @@ class LidarDet3DInferencer(Base3DInferencer):
         """Initialize the test pipeline."""
         pipeline_cfg = cfg.test_dataloader.dataset.pipeline
 
-        load_point_idx = self._get_transform_idx(pipeline_cfg,
-                                                 'LoadPointsFromFile')
+        if self.which_pipeline is 'LoadPointsFromFile' or self.which_pipeline is None:
+            load_point_idx = self._get_transform_idx(pipeline_cfg,
+                                                    'LoadPointsFromFile')
+        else:
+            load_point_idx = self._get_transform_idx(pipeline_cfg,
+                                                    self.which_pipeline)
+
         if load_point_idx == -1:
             raise ValueError(
-                'LoadPointsFromFile is not found in the test pipeline')
+                'Loadingfile {} is not found in the test pipeline'.format(self.which_pipeline)
+            )
 
         load_cfg = pipeline_cfg[load_point_idx]
         self.coord_type, self.load_dim = load_cfg['coord_type'], load_cfg[
