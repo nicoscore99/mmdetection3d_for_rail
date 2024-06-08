@@ -3,18 +3,20 @@ _base_ = [
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
-# _base_.visualizer.vis_backends = [
-#     dict(
-#         type='WandbVisBackend',
-#         init_kwargs={
-#             'project': 'pv-rcnn',
-#             'entity': 'railsensing'
-#         }
-#     )
-# ]
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='data/osdar23/training/rtx4k_pvrcnn_run2/',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'pv-rcnn',
+             'name': 'rtx4k_pvrcnn_run2'
+             })
+]
 
 dataset = dict(type='OSDaR23Dataset')
-voxel_size = [0.05, 0.05, 0.1]
+voxel_size = [0.2, 0.2, 0.2]
 point_cloud_range = [0, -40, -3, 70.4, 40, 1]
 
 data_root = 'data/osdar23/'
@@ -80,7 +82,9 @@ test_pipeline = [
             dict(
                 type='PointsRangeFilter', point_cloud_range=point_cloud_range)
         ]),
-    dict(type='Pack3DDetInputs', keys=['points'])
+    dict(
+        type='Pack3DDetInputs', 
+        keys=['points', 'gt_labels_3d', 'gt_bboxes_3d'])
 ]
 
 model = dict(
@@ -381,6 +385,15 @@ train_dataloader = dict(
     dataset=dict(dataset=dict(pipeline=train_pipeline, metainfo=metainfo)))
 test_dataloader = dict(dataset=dict(pipeline=test_pipeline, metainfo=metainfo))
 eval_dataloader = dict(dataset=dict(pipeline=test_pipeline, metainfo=metainfo))
+
+val_evaluator = dict(
+    type='General_3dDet_Metric_MMLab',
+    ann_file=data_root + 'kitti_infos_val.pkl',
+    metric='det3d',
+    classes=class_names,
+    output_dir='data/osdar23/training/rtx4k_pvrcnn_run2',
+    backend_args=backend_args)
+
 lr = 0.001
 optim_wrapper = dict(optimizer=dict(lr=lr))
 param_scheduler = [

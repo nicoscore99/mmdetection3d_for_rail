@@ -1,6 +1,7 @@
 voxel_size = [0.16, 0.16, 4]
 # voxel_size = [0.2, 0.2, 4]
-point_cloud_range = [0, -39.68, -3, 69.12, 39.68, 1]
+point_cloud_range = [0, -39.68, -3, 101.12, 39.68, 1]
+# point_cloud_range = [0, -40, -3, 100, 40, 1]
 # point_cloud_range = [0, -43.2, -3, 99.20, 42.2, 1]
 # [1250, 812.5, 1]
 model = dict(
@@ -12,7 +13,7 @@ model = dict(
             max_num_points=32,  # max_points_per_voxel
             point_cloud_range=point_cloud_range,
             voxel_size=voxel_size,
-            max_voxels=(12000, 12000))), # Max voxels in (training, testing) time. Default would be 20k.
+            max_voxels=(20000, 20000))), # Max voxels in (training, testing) time. Default would be 20k.
     voxel_encoder=dict(
         type='PillarFeatureNet',
         in_channels=4,
@@ -21,7 +22,7 @@ model = dict(
         voxel_size=voxel_size,
         point_cloud_range=point_cloud_range),
     middle_encoder=dict(
-        type='PointPillarsScatter', in_channels=64, output_shape=[496, 432]),
+        type='PointPillarsScatter', in_channels=64, output_shape=[496, 632]),
     backbone=dict(
         type='SECOND',
         in_channels=64,

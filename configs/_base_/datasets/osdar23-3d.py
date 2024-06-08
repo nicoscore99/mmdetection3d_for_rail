@@ -4,7 +4,7 @@ custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
                                'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)
 dataset = dict(type='OSDaR23Dataset')
 dataset_type = 'OSDaR23Dataset'
-data_root = 'data/osdar23_test/'
+data_root = 'data/osdar23/'
 class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
 # According to Robosense M1+ specifications (Range: 200m, Horizontal FOV: 120°)
 input_modality = dict(use_lidar=True, use_camera=False)
@@ -139,9 +139,14 @@ val_evaluator = dict(
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23/training/pointpillars_test_delete_after_use/',
+    output_dir='data/osdar23/training/rtx4k_pointpillars_run1/',
+    pcd_limit_range=[0, -39.68, -3, 101.12, 39.68, 1],
+    save_graphics=False,
     backend_args=backend_args)
 test_evaluator = val_evaluator
+
+# val_evaluator = dict()
+# test_evaluator = dict()
 
 vis_backends = [dict(type='LocalVisBackend')]
 visualizer = dict(
