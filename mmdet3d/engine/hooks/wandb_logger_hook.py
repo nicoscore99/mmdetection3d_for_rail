@@ -18,6 +18,16 @@ from mmdet3d.registry import HOOKS
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]
 
+def flatten_dict(d, parent_key='', sep='/'):
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
 @HOOKS.register_module()
 class WandbLoggerHook(LoggerHook):
     """ Hook to log metrics with Weights & Biases.
@@ -43,10 +53,12 @@ class WandbLoggerHook(LoggerHook):
             'cm': self.log_cm_curve
         }
 
+        self.train_outputs_total = None
+        self.val_outputs_total = None
+
         self._save_dir = save_dir
         self._init_kwargs = init_kwargs
         self._yaml_config_path = yaml_config_path
-        self._define_metric_cfg = metric_cfg
         self._commit = commit
         self._watch_kwargs = watch_kwargs
         self._log_artifact = log_artifact
@@ -77,19 +89,30 @@ class WandbLoggerHook(LoggerHook):
             key_configured = self._wandb.login(key=self.wandb_auth_config['api_key'])        
             assert key_configured, '[WandbLoggerHook] wandb api key not configured'
 
-        # Check if wandb is already initialized
-
         # Initialize wandb with kwards and config
         self.run = self._wandb.init(**self._init_kwargs)
-        if self._define_metric_cfg is not None:
-            if isinstance(self._define_metric_cfg, dict):
-                for metric, summary in self._define_metric_cfg.items():
-                    wandb.define_metric(metric, summary=summary)
-            elif isinstance(self._define_metric_cfg, list):
-                for metric_cfg in self._define_metric_cfg:
-                    wandb.define_metric(**metric_cfg)
-            else:
-                raise ValueError('define_metric_cfg should be dict or list')
+
+        # Define the metrics
+        self._define_metric_cfg = {
+            'train_iter': 'train_iter',     # iter
+            'train_epoch': 'train_epoch',   # epoch
+            'val_iter': 'val_iter',         # iter
+            'val_epoch': 'val_epoch',       # epoch
+            'val_metrics': 'val_epoch'      # epoch
+        }
+
+        # Define the metrics
+        if metric_cfg is not None:
+            self._define_metric_cfg = metric_cfg
+
+        for values in set(self._define_metric_cfg.values()):
+            self._wandb.define_metric(values)
+
+        for key, value in self._define_metric_cfg.items():
+
+            key_all_subsubkeys = key + '/*'
+            self._wandb.define_metric(key_all_subsubkeys, step_metric=value)
+
 
     def wandb_login(self):
         key_configure = self.wandb.login(key=self.wandb_auth_config['api_key'], relogin=True, force=True)
@@ -109,9 +132,26 @@ class WandbLoggerHook(LoggerHook):
                         data_batch: DATA_BATCH = None,
                         outputs: Optional[dict] = None) -> None:
         
-        log_output = {'train': outputs}       
+        outputs = {'train_iter': outputs}
+        outputs = flatten_dict(outputs)       
         if outputs is not None:
-            self._wandb.log(log_output, step=runner.iter, commit=self._commit)
+            # self._wandb.log(outputs, step=runner.iter, commit=self._commit)
+
+            for key, value in outputs.items():
+                self._wandb.log({key: value, 'train_iter': runner.iter}, commit=self._commit)
+
+            
+    def after_train_epoch(self,
+                          runner: Runner,
+                          metrics: Optional[Dict[str, float]] = None) -> None:
+
+        outputs = {'train_epoch': metrics}
+        outputs = flatten_dict(outputs)
+        if metrics is not None:
+            # self._wandb.log(outputs, step=runner.epoch, commit=self._commit)
+
+            for key, value in outputs.items():
+                self._wandb.log({key: value, 'train_epoch': runner.epoch}, commit=self._commit)
 
     def after_val_iter(self,
                        runner,
@@ -119,25 +159,45 @@ class WandbLoggerHook(LoggerHook):
                        data_batch: DATA_BATCH = None,
                        outputs: Optional[dict] = None) -> None:
         
-        log_output = {'val': outputs}
+        outputs = {'val_iter': outputs}
+        outputs = flatten_dict(outputs)
         if outputs is not None:
-            self._wandb.log(log_output, step=runner.iter, commit=self._commit)
+            # self._wandb.log(outputs, step=runner.iter, commit=self._commit)
+
+            for key, value in outputs.items():
+                self._wandb.log({key: value, 'val_iter': runner.iter}, commit=self._commit)
 
     def after_val_epoch(self, 
                         runner: Runner, 
                         metrics: Optional[Dict[str, float]] = None) -> None:
+        
+        print(f'Logging metrics: {metrics}')
+        
+        if 'log_vars' in metrics:
+            if metrics['log_vars'].keys():
+                outputs = {'val_epoch': metrics['log_vars']}
+                outputs = flatten_dict(outputs)
+                # self._wandb.log(outputs, step=runner.epoch, commit=self._commit)
 
-        if metrics['General 3D Det metric mmlab/evaluations'].keys():
-            self._wandb.log(metrics['General 3D Det metric mmlab/evaluations'], step=runner.iter, commit=self._commit)
+                for key, value in outputs.items():
+                    self._wandb.log({key: value, 'val_epoch': runner.epoch}, commit=self._commit)
 
-        curves = metrics['General 3D Det metric mmlab/curves']
-        if curves.keys():
-            for curve_key in curves.keys():
-                for level in curves[curve_key].keys():
+        if 'General 3D Det metric mmlab/evaluations' in metrics:
+            if metrics['General 3D Det metric mmlab/evaluations'].keys():
+                outputs = {'val_metrics': metrics['General 3D Det metric mmlab/evaluations']}
+                # self._wandb.log(outputs, step=runner.epoch, commit=self._commit)
 
-                    self.curve_visualization_wandb_logging_map[curve_key](runner = runner,
-                                                                      curve = curves[curve_key][level],
-                                                                      level = level)
+                for key, value in outputs.items():
+                    self._wandb.log({key: value, 'val_epoch': runner.epoch}, commit=self._commit)
+
+        if 'General 3D Det metric mmlab/curves' in metrics:
+            curves = metrics['General 3D Det metric mmlab/curves']
+            if curves.keys():
+                for curve_key in curves.keys():
+                    for level in curves[curve_key].keys():
+                        self.curve_visualization_wandb_logging_map[curve_key](runner = runner,
+                                                                        curve = curves[curve_key][level],
+                                                                        level = level)
                     
     def after_test_epoch(self,
                          runner: Runner,
@@ -225,8 +285,7 @@ class WandbLoggerHook(LoggerHook):
 
             self._wandb.log({'cm': wandb.sklearn.plot_confusion_matrix(y_true=_true, 
                                                                     y_pred=_pred,
-                                                                    labels=curve['classes'])},
-                            step=runner.iter)
+                                                                    labels=curve['classes'])})
             
         except Exception as e:
             print(f"Error while logging confusion matrix: {e}")

@@ -880,9 +880,10 @@ class LoadAnnotations3D(LoadAnnotations):
             results['gt_bboxes_3d'] = results['ann_info']['gt_bboxes_3d']
         elif 'eval_ann_info' in results:
             results['gt_bboxes_3d'] = results['eval_ann_info']['gt_bboxes_3d']
-        else:
-            raise KeyError(
-                'Cannot find 3D bounding box annotations in results')
+        # else:
+        #     print("Debug: ", results)
+        #     raise KeyError(
+        #         'Cannot find 3D bounding box annotations in results')
 
         return results
 
@@ -929,9 +930,9 @@ class LoadAnnotations3D(LoadAnnotations):
             results['gt_labels_3d'] = results['ann_info']['gt_labels_3d']
         elif 'eval_ann_info' in results:
             results['gt_labels_3d'] = results['eval_ann_info']['gt_labels_3d']
-        else:
-            raise KeyError(
-                'Cannot find 3D label annotations in results')
+        # else:
+        #     raise KeyError(
+        #         'Cannot find 3D label annotations in results')
 
         return results
 
@@ -951,9 +952,9 @@ class LoadAnnotations3D(LoadAnnotations):
             results['attr_labels'] = results['ann_info']['attr_labels']
         elif 'eval_ann_info' in results:
             results['attr_labels'] = results['eval_ann_info']['attr_labels']
-        else:
-            raise KeyError(
-                'Cannot find attribute label annotations in results')
+        # else:
+        #     raise KeyError(
+        #         'Cannot find attribute label annotations in results')
 
         return results
 
