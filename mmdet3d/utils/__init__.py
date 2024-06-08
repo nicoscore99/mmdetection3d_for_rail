@@ -8,6 +8,10 @@ from .typing_utils import (ConfigType, InstanceList, MultiConfig,
                            OptConfigType, OptInstanceList, OptMultiConfig,
                            OptSampleList, OptSamplingResultList)
 
+# from mmdet3d.engine.hooks.wandb_logger_hook import WandbLoggerHook
+# from mmdet3d.datasets.osdar23_dataset import OSDaR23Dataset
+# from mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab import General_3dDet_Metric_MMLab
+
 __all__ = [
     'collect_env', 'setup_multi_processes', 'compat_cfg',
     'register_all_modules', 'array_converter', 'ArrayConverter', 'ConfigType',

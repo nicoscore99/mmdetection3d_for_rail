@@ -95,7 +95,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         # For now, metric should just be one. Don't select both.
         self.metric = metric
 
-        self.difficulty_levels = [0.3, 0.5, 0.7]
+        self.difficulty_levels = [0.1, 0.3, 0.5]
         
         # Check that difficulty levels are not empty
         if not self.difficulty_levels:
@@ -153,6 +153,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d']
             dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d']
             results_dict[sample_idx] = dt_bboxes
+
             self.results.append(results_dict)
 
     def compute_metrics(self, results: List[dict]) -> Dict[str, float]:
@@ -188,6 +189,9 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         gt_annos = self.convert_from_ann_file(ann_file)
         dt_annos = self.convert_from_results(results)
 
+        # print("Debug: gt_annos: ", gt_annos)
+        # print("Debug: dt_annos: ", dt_annos)
+
         # Assert that the keys of the gt_annos and dt_annos are the same
         assert gt_annos.keys() == dt_annos.keys(), "The keys of the gt_annos and dt_annos are not the same."
 
@@ -219,9 +223,13 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                                                                                        class_accuracy_requirements='hard',
                                                                                        class_idx=range(len(self.classes)))
 
-        curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=0.5)
-        curves_dict['roc'] = self.evaluator.roc_curve(iou_level=0.5)
-        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)
+        level_lower_bound = self.difficulty_levels[0]
+
+
+
+        curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=level_lower_bound)
+        curves_dict['roc'] = self.evaluator.roc_curve(iou_level=level_lower_bound)
+        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=level_lower_bound)
 
         if self.save_graphics:
             self.save_plot(plot=self.evaluator.precision_recall_plot(iou_level=0.5), filename = 'precision_recall_plot.png')
@@ -379,7 +387,6 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         if num_bbox_before == 0:
             percentage = 0.0
         else:
-            print("Debug: num_bbox_before: ", num_bbox_before)
             percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
             
         return annos_valid, percentage
@@ -806,9 +813,21 @@ class EvaluatorMetrics():
         if not iou_level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(iou_level)
     
-        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_gt_inds'] > 0
+        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_labels'] != -1
+
+        # print("Debug: assigned_gt_inds: ", self.threshold_specific_results_dict[iou_level]['assigned_gt_inds'])
+        # print("Debug: relevant_inds: ", relevant_inds)
+
         _y_true = self.threshold_specific_results_dict[iou_level]['assigned_labels'][relevant_inds]
+
+        # print("Debug: assigned_labels: ", self.threshold_specific_results_dict[iou_level]['assigned_labels'])
+        # print("Debug: y_true: ", _y_true)
+
         _y_pred = self.threshold_specific_results_dict[iou_level]['dt_labels'][relevant_inds]
+
+        # print("Debug: dt_labels: ", self.threshold_specific_results_dict[iou_level]['dt_labels'])
+        # print("Debug: y_pred: ", _y_pred)
+
         _labels = range(len(self._classes))
 
         confusion_matrix = sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=_labels)
