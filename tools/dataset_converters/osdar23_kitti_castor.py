@@ -36,6 +36,7 @@ class OSDaR23_2_KITTI_Converter(object):
                  save_cam_instances=True,
                  info_prefix='osdar23',
                  max_sweeps=10,
+                 sensor_idcs=[0],
                  split='train'):
         
         """
@@ -98,6 +99,7 @@ class OSDaR23_2_KITTI_Converter(object):
         self.save_cam_instances = save_cam_instances
         self.info_prefix = info_prefix
         self.max_sweeps = max_sweeps
+        self.sensor_idcs = sensor_idcs
 
         self.train_partition = 0.8
         self.val_partition = 0.2
@@ -129,13 +131,22 @@ class OSDaR23_2_KITTI_Converter(object):
         
         # Mapping of the OSDAR classes into the classes we want to consider
         # Hint: Transition and switch are not considered since they are not 3D bounding box labeled in the LiDAR data
+        # self.class_names = {
+        #     'pedestrian': ['person', 'crowd'],
+        #     'car': ['road_vehicle'],
+        #     'train': ['train', 'wagons'],
+        #     'bike': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+        #     'unknown': ['animal', 'group_of_animals'],
+        #     'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
+        # }
+
         self.class_names = {
             'pedestrian': ['person', 'crowd'],
             'car': ['road_vehicle'],
-            'train': ['train', 'wagons'],
-            'bike': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            'unknown': ['animal', 'group_of_animals'],
-            'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
+            # 'train': ['train', 'wagons'],
+            'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+            # 'unknown': ['animal', 'group_of_animals'],
+            # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
         }
 
         self.ensure_mapping_consistency(self.OSDAR23_CLASSES, self.class_names)
@@ -303,8 +314,16 @@ class OSDaR23_2_KITTI_Converter(object):
         np_y = (np.array(pc.pc_data['y'], dtype=np.float32)).astype(np.float32)
         np_z = (np.array(pc.pc_data['z'], dtype=np.float32)).astype(np.float32)
         np_i = (np.array(pc.pc_data['intensity'], dtype=np.float32)).astype(np.float32)
+        np_sensor_index = (np.array(pc.pc_data['sensor_index'], dtype=np.float32)).astype(np.float32)
 
-        points_32 = np.transpose(np.vstack((np_x, np_y, np_z, np_i)))
+        points_32 = np.transpose(np.vstack((np_x, np_y, np_z, np_i, np_sensor_index)))
+
+        # Filter for sensor_index
+        if self.sensor_idcs is not None:
+            points_32 = points_32[np.isin(points_32[:, -1], self.sensor_idcs)]
+
+        # Omit the sensor index
+        points_32 = points_32[:, :-1]
 
         return points_32
     
@@ -529,7 +548,11 @@ class OSDaR23_2_KITTI_Converter(object):
 
         with open(test_file, 'w') as f:
             for file in point_files:
-                f.write(f'{file}\n')        
+                f.write(f'{file}\n')
+
+        print(f'Training set length: {len(train_files)}')
+        print(f'Validation set length: {len(val_files)}')
+        print('Data split files have been generated successfully.')
 
 
 if __name__ == '__main__':
