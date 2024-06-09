@@ -225,8 +225,6 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         level_lower_bound = self.difficulty_levels[0]
 
-
-
         curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=level_lower_bound)
         curves_dict['roc'] = self.evaluator.roc_curve(iou_level=level_lower_bound)
         curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=level_lower_bound)
