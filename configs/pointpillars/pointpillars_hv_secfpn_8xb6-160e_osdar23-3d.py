@@ -20,10 +20,8 @@ db_sampler = dict(
     rate=1.0,
     prepare=dict(
         filter_by_min_points=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5, dontcare=5)
-        filter_by_min_points=dict(pedestrian=5, car=5, train=0, bike=0, unknown=0, dontcare=0)
         ),
     classes=class_names,
-    sample_groups=dict(pedestrian=5, car=5, train=0, bike=0, unknown=0, dontcare=0),
     sample_groups=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5, dontcare=5),
     points_loader=dict(
         type='LoadPointsFromFile',
@@ -157,12 +155,12 @@ test_cfg = dict()
 # ]
 custom_hooks = [
     dict(type='WandbLoggerHook', 
-         save_dir='data/osdar23/training/rtx4k_pointpillars_run1/',
+         save_dir='data/osdar23/training/rtx4k_pointpillars_run3/',
          yaml_config_path='wandb_auth.yaml',
          log_artifact=True,
          init_kwargs={
              'entity': 'railsensing',
              'project': 'mmdetection3d',
-             'name': 'rtx4k_pointpillars_run1'
+             'name': 'rtx4k_pointpillars_run3'
              })
 ]

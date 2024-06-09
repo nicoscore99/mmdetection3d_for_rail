@@ -22,7 +22,7 @@ model = dict(
         voxel_size=voxel_size,
         point_cloud_range=point_cloud_range),
     middle_encoder=dict(
-        type='PointPillarsScatter', in_channels=64, output_shape=[496, 432]),
+        type='PointPillarsScatter', in_channels=64, output_shape=[496, 632]),
         # type='PointPillarsScatter', in_channels=64, output_shape=[500, 626]),
     backbone=dict(
         type='SECOND',
