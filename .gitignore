@@ -142,3 +142,11 @@ mmdet3d/evaluation/functional/waymo_utils/compute_segmentation_metrics_main
 
 # Authorization files
 mmdet3d/engine/hooks/wandb_auth.yaml
+
+# Checkpoint files
+checkpoints/
+
+# Demo outputs
+demo/local_outputs/
+demo/remote_outputs/
+outputs/

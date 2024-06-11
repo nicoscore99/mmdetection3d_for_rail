@@ -163,15 +163,19 @@ class OSDaR23_2_KITTI_Converter(object):
         self.filter_no_label_zone_points = True
         self.save_track_id = False
 
-        # self.image_dir = osp.join(self.save_dir, 'image')
+        self.image_dir = osp.join(self.save_dir, 'image')
         self.lidar_dir = osp.join(self.save_dir, 'points')
         self.sets_dir = osp.join(self.save_dir, 'ImageSets')
         self.labels_dir = osp.join(self.save_dir, 'labels')
+        self.calib_dir = osp.join(self.save_dir, 'calib')
 
         # Check if there are directories or if they need to be created
+        mmengine.mkdir_or_exist(self.image_dir)
         mmengine.mkdir_or_exist(self.lidar_dir)
         mmengine.mkdir_or_exist(self.sets_dir)
         mmengine.mkdir_or_exist(self.labels_dir)
+        mmengine.mkdir_or_exist(self.calib_dir)
+
         
     ########################################################
     # Helper functions
@@ -363,6 +367,7 @@ class OSDaR23_2_KITTI_Converter(object):
         lidar_path = osp.join(self.orig_folder, scene_folder, 'lidar')
         lidar_files_frame_keys = [str(int(file[:3])) for file in os.listdir(lidar_path)]
 
+
         print(f'Frames in lidar folder: {lidar_files_frame_keys}')
 
         # Find the intersection of the lidar files and the frames in the label file
@@ -373,6 +378,64 @@ class OSDaR23_2_KITTI_Converter(object):
 
         # Create labels
         self.create_labels(scene_folder, common_frame_keys, label_file)
+
+        # Create calibration file
+        self.create_calib(scene_folder, common_frame_keys, label_file)
+
+    def create_calib(self, scene_folder, _common_frame_keys, label_file):
+        """
+            Create the calibration file for the scene.
+        """
+
+        out_dir = osp.join(self.save_dir, 'calib')
+
+        # Check if the output directory exits
+        if not os.path.exists(out_dir):
+            raise ValueError(f'Output directory {out_dir} does not exist')
+        
+        
+        rgb_left_intrinsic = label_file['openlabel']['streams']['rgb_left']['stream_properties']['intrinsics_pinhole']['camera_matrix']
+        rgb_right_intrinsic = label_file['openlabel']['streams']['rgb_right']['stream_properties']['intrinsics_pinhole']['camera_matrix']
+        rgb_center_intrinsic = label_file['openlabel']['streams']['rgb_center']['stream_properties']['intrinsics_pinhole']['camera_matrix']
+
+        rgb_left_translation = label_file['openlabel']['coordinate_systems']['rgb_left']['pose_wrt_parent']['translation']
+        rgb_left_quaternion = label_file['openlabel']['coordinate_systems']['rgb_left']['pose_wrt_parent']['quaternion']
+        rgb_right_translation = label_file['openlabel']['coordinate_systems']['rgb_right']['pose_wrt_parent']['translation']
+        rgb_right_quaternion = label_file['openlabel']['coordinate_systems']['rgb_right']['pose_wrt_parent']['quaternion']
+        rgb_center_translation = label_file['openlabel']['coordinate_systems']['rgb_center']['pose_wrt_parent']['translation']
+        rgb_center_quaternion = label_file['openlabel']['coordinate_systems']['rgb_center']['pose_wrt_parent']['quaternion']
+
+        for frame_key in _common_frame_keys:
+                
+                frame_key_name = frame_key
+                if len(frame_key) == 1:
+                    frame_key_name = '00' + frame_key
+                elif len(frame_key) == 2:
+                    frame_key_name = '0' + frame_key
+
+                # Write the bounding box to the label file
+                out_path = osp.join(out_dir, f'{scene_folder}_{frame_key_name}.txt')
+
+                if osp.exists(out_path):
+                    print_log(f'File {out_path} already exists', logger='current')
+                    continue
+                
+                # If the file does not exist, create it in any case
+                with open(out_path, 'w') as file:
+                    print_log(f'Created new file {out_path}.')
+                    pass
+
+                with open(out_path, 'a') as f:
+                    f.write(f'rgb_left_intrinsic {rgb_left_intrinsic[0]} {rgb_left_intrinsic[1]} {rgb_left_intrinsic[2]} {rgb_left_intrinsic[3]} {rgb_left_intrinsic[4]} {rgb_left_intrinsic[5]} {rgb_left_intrinsic[6]} {rgb_left_intrinsic[7]} {rgb_left_intrinsic[8]} {rgb_left_intrinsic[9]} {rgb_left_intrinsic[10]} {rgb_left_intrinsic[11]}\n')
+                    f.write(f'rgb_right_intrinsic {rgb_right_intrinsic[0]} {rgb_right_intrinsic[1]} {rgb_right_intrinsic[2]} {rgb_right_intrinsic[3]} {rgb_right_intrinsic[4]} {rgb_right_intrinsic[5]} {rgb_right_intrinsic[6]} {rgb_right_intrinsic[7]} {rgb_right_intrinsic[8]} {rgb_right_intrinsic[9]} {rgb_right_intrinsic[10]} {rgb_right_intrinsic[11]}\n')
+                    f.write(f'rgb_center_intrinsic {rgb_center_intrinsic[0]} {rgb_center_intrinsic[1]} {rgb_center_intrinsic[2]} {rgb_center_intrinsic[3]} {rgb_center_intrinsic[4]} {rgb_center_intrinsic[5]} {rgb_center_intrinsic[6]} {rgb_center_intrinsic[7]} {rgb_center_intrinsic[8]} {rgb_center_intrinsic[9]} {rgb_center_intrinsic[10]} {rgb_center_intrinsic[11]}\n')
+                    f.write(f'rgb_left_translation {rgb_left_translation[0]} {rgb_left_translation[1]} {rgb_left_translation[2]}\n')
+                    f.write(f'rgb_center_translation {rgb_center_translation[0]} {rgb_center_translation[1]} {rgb_center_translation[2]}\n')
+                    f.write(f'rgb_right_translation {rgb_right_translation[0]} {rgb_right_translation[1]} {rgb_right_translation[2]}\n')
+                    f.write(f'rgb_left_quaternion {rgb_left_quaternion[0]} {rgb_left_quaternion[1]} {rgb_left_quaternion[2]} {rgb_left_quaternion[3]}\n')
+                    f.write(f'rgb_right_quaternion {rgb_right_quaternion[0]} {rgb_right_quaternion[1]} {rgb_right_quaternion[2]} {rgb_right_quaternion[3]}\n')
+                    f.write(f'rgb_center_quaternion {rgb_center_quaternion[0]} {rgb_center_quaternion[1]} {rgb_center_quaternion[2]} {rgb_center_quaternion[3]}\n')
+
 
     def create_labels(self, scene_folder, _common_frame_keys, label_file):
 
