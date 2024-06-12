@@ -105,7 +105,7 @@ class LidarDet3DInferencer(Base3DInferencer):
         """Initialize the test pipeline."""
         pipeline_cfg = cfg.test_dataloader.dataset.pipeline
 
-        if self.which_pipeline is 'LoadPointsFromFile' or self.which_pipeline is None:
+        if self.which_pipeline == 'LoadPointsFromFile' or self.which_pipeline is None:
             load_point_idx = self._get_transform_idx(pipeline_cfg,
                                                     'LoadPointsFromFile')
         else:

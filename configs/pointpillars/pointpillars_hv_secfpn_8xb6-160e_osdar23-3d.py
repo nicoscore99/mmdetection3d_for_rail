@@ -8,7 +8,7 @@ dataset = dict(type='OSDaR23Dataset')
 point_cloud_range =  [0, -39.68, -3, 69.12, 39.68, 20]
 # point_cloud_range = [0, -43.2, -3, 99.20, 42.2, 1]
 # dataset settings
-data_root = 'data/osdar23_test/'
+data_root = 'data/osdar23/'
 class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
 metainfo = dict(classes=class_names)
 backend_args = None
@@ -145,7 +145,7 @@ test_cfg = dict()
 
 # custom_hooks = [
 #     dict(type='WandbLoggerHook', 
-#          save_dir='data/osdar23/training/pointpillars_test_delete_after_use/',
+#          save_dir='data/osdar23_test/training/pointpillars_test_delete_after_use/',
 #          yaml_config_path='wandb_auth.yaml',
 #          log_artifact=True,
 #          init_kwargs={

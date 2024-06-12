@@ -4,7 +4,7 @@ custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
                                'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)
 dataset = dict(type='OSDaR23Dataset')
 dataset_type = 'OSDaR23Dataset'
-data_root = 'data/osdar23_test/'
+data_root = 'data/osdar23/'
 class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
 # According to Robosense M1+ specifications (Range: 200m, Horizontal FOV: 120°)
 input_modality = dict(use_lidar=True, use_camera=False)

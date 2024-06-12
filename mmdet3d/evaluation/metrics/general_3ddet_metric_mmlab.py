@@ -23,6 +23,9 @@ from mmdet3d.structures.bbox_3d import LiDARInstance3DBoxes
 from mmdet3d.models.task_modules.assigners.max_3d_iou_assigner import Max3DIoUAssigner
 from mmengine.structures import InstanceData
 
+from mmdet3d.structures import (Box3DMode, CameraInstance3DBoxes,
+                                LiDARInstance3DBoxes, points_cam2img)
+
 @METRICS.register_module()
 class General_3dDet_Metric_MMLab(BaseMetric):
     """Kitti evaluation metric.
@@ -59,7 +62,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
     def __init__(self,
                  ann_file: str,
                  metric: str = 'det3d',
-                 pcd_limit_range: List[float] = [0, -39.68, -3, 69.12, 39.68, 20],
+                 pcd_limit_range: List[float] = [0, -39.68, -20, 69.12, 39.68, 20],
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
                  default_cam_key: str = 'CAM2',
@@ -145,7 +148,12 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         }
         
         """
+
         for data_sample in data_samples:
+
+            print("Debug: data_sample: ", data_sample)
+            raise ValueError("Debug: Stop here")
+
             results_dict = dict()
             sample_idx = data_sample['lidar_path'].split('/')[-1][-7:-4]
             dt_bboxes = InstanceData()
@@ -304,6 +312,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         
         annos_dict = dict()
         for i, anno in enumerate(ann_file['data_list']):
+
+            # print("Debug: anno: ", anno)
+            # raise ValueError("Debug: Stop here")
+
             # NOTE: This should be corrected and in the OSDAR23 conversion script: Use sample_idx without the .bin
             # For now, only use the first three characters of the sample_idx
             sample_idx = anno['lidar_points']['lidar_path'][-7:-4]
@@ -311,10 +323,18 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             labels_3d_lst = []
             scores_3d_lst = []
             for instance in anno['instances']:
-                bbox_3d_lst.append(instance['bbox_3d'])
+
+                # bbox_3d = CameraInstance3DBoxes(tensor=[instance['bbox_3d']])
+                # bbox_3d_lidar = bbox_3d.convert_to(Box3DMode.LIDAR, np.linalg.inv(instance['lidar2cam']))
+                # bbox_3d = [bbox_3d_lidar.bottom_center, bbox_3d_lidar.dims, bbox_3d_lidar.yaw]
+                # bbox_3d = torch.cat(bbox_3d, dim=1)
+
+                # For Kitti, bbox3d needs to be converted to the lidar frame
+                bbox_3d_lst.append(bbox_3d)
                 labels_3d_lst.append(instance['bbox_label'])
                 scores_3d_lst.append(instance['score']) # Currently, this value is unnenecessary and will just be 0.00 since it is not implemented 
-           
+
+
             gt_instance = InstanceData()
             gt_instance.bboxes_3d = torch.tensor(bbox_3d_lst)
             gt_instance.labels_3d = torch.tensor(labels_3d_lst)
