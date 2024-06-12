@@ -63,6 +63,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  ann_file: str,
                  metric: str = 'det3d',
                  pcd_limit_range: List[float] = [0, -39.68, -20, 69.12, 39.68, 20],
+                 force_single_assignement: bool = False,
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
                  default_cam_key: str = 'CAM2',
@@ -85,6 +86,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         self.classes = classes
         self.output_dir = output_dir
         self.save_graphics = save_graphics
+        self.force_single_assignement = force_single_assignement
 
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
@@ -98,7 +100,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         # For now, metric should just be one. Don't select both.
         self.metric = metric
 
-        self.difficulty_levels = [0.1, 0.3, 0.5]
+        self.difficulty_levels = [0.1, 0.3, 0.5, 0.7, 0.9]
         
         # Check that difficulty levels are not empty
         if not self.difficulty_levels:
@@ -124,47 +126,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             print("Output directory does not exist. Creating it now.")
             os.makedirs(self.output_dir)
 
-    # def process(self, data_batch: dict, data_samples: Sequence[dict]) -> dict:
-    #     """Process one batch of data samples and predictions.
-
-    #     The processed results should be stored in ``self.results``, which will
-    #     be used to compute the metrics when all batches have been processed.
-
-    #     Args:
-    #         data_batch (dict): A batch of data from the dataloader.
-    #         data_samples (Sequence[dict]): A batch of outputs from the model.
-
-
-    #     Required format for the conversion:
-    #     {'_sample_idx_': {
-    #         'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
-    #                             [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
-    #                             [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
-    #                             [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
-    #                             [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
-    #                             [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
-    #         'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
-    #         'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
-    #     }
-        
-    #     """
-
-    #     for data_sample in data_samples:
-
-    #         results_dict = dict()
-    #         sample_idx = data_sample['lidar_path'].split('/')[-1][-7:-4]
-    #         dt_bboxes = InstanceData()
-    #         dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d']
-    #         dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d']
-    #         dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d']
-    #         results_dict[sample_idx] = dt_bboxes
-
-    #         self.results.append(results_dict)
-
     def process(self, data_batch: dict, data_samples: Sequence[dict]) -> dict:
-
-        # Append the datasamples Sequence to the results list
-        # self.results += data_samples
 
         # Append the datasamples Sequence to the results list
         self.results += data_samples
@@ -215,10 +177,22 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         dt_annos_valid, perc = self.filter_valid_dt_annos(dt_annos)
         print("Percentage of valid bounding boxes for detections: ", perc)
 
+        # Assert that the keys of the gt_annos_valid and dt_annos_valid are the same
+        if not gt_annos_valid.keys() == dt_annos_valid.keys():
+
+            # print the keys that are not in both lists
+            print("Keys that are not in both lists: ", set(gt_annos_valid.keys()) ^ set(dt_annos_valid.keys()))
+
+            raise ValueError("The keys of the gt_annos_valid and dt_annos_valid are not the same.")
+
         evaluation_results_dict = dict() # Contains all evaluation results
         curves_dict = dict() # Contains all curves
 
-        self.evaluator = EvaluatorMetrics(gt_annos_valid=gt_annos_valid, dt_annos_valid=dt_annos_valid, classes=self.classes, metric=self.metric)
+        self.evaluator = EvaluatorMetrics(gt_annos_valid=gt_annos_valid, 
+                                          dt_annos_valid=dt_annos_valid, 
+                                          classes=self.classes, 
+                                          metric=self.metric, 
+                                          force_single_assignement=self.force_single_assignement)
 
         # Only perform the evaluation when there is at least 10 gt instances and 10 dt instances
         
@@ -230,8 +204,11 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             print_log("The number of dt instances is less than 10, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
-        evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                         class_accuracy_requirements='hard')
+        # evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
+        #                                                                                  class_accuracy_requirements='hard')
+
+        evaluation_results_dict['mAP'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
+                                                                                    class_accuracy_requirements='hard')
 
         evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
                                                                                        class_accuracy_requirements='hard',
@@ -298,8 +275,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             
             # Check if any dimension is empty
             if _bbox_3d.size(0) == 0:
+                annos_valid[key] = annos[key]
                 continue
             elif _bbox_3d.size(1) == 0:
+                annos_valid[key] = annos[key]
                 continue
             
             bbox_3d_center = _bbox_3d[:, :3]
@@ -309,10 +288,6 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                         (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
                         (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
                         (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
-            
-            print("Debug: bboxes_3d: ", annos[key].bboxes_3d)
-            print("Debug: labels_3d: ", annos[key].labels_3d)
-            print("Debug: valid_inds: ", valid_inds)
             
             instance_data_valid = InstanceData()
             instance_data_valid.bboxes_3d = annos[key].bboxes_3d[valid_inds]
@@ -369,20 +344,17 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
             assert len(annos[key].bboxes_3d) == len(annos[key].labels_3d), "The number of bounding boxes and labels are not the same."
 
-            print("Debug2: annos[key].bboxes_3d: ", annos[key])
-            print("Debug2: annos[key].bboxes_3d: ", annos[key].bboxes_3d)
-
             _bbox_3d = annos[key].bboxes_3d
 
             # Check if any dimension is empty
             if _bbox_3d.size(0) == 0:
+                annos_valid[key] = annos[key]
                 continue
             elif _bbox_3d.size(1) == 0:
+                annos_valid[key] = annos[key]
                 continue
 
             bbox_3d_center = _bbox_3d[:, :3]
-
-            print("Debug2: bbox_3d_center: ", bbox_3d_center)
 
             valid_inds = ((bbox_3d_center[:, 0] >= self.pcd_limit_range[0]) &
                           (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
@@ -421,7 +393,8 @@ class EvaluatorMetrics():
     def __init__(self, 
                  gt_annos_valid: dict,
                  dt_annos_valid: dict,
-                 classes: List[str], 
+                 classes: List[str],
+                 force_single_assignement: bool = True,
                  metric = str):
         
         self.iou_calculator_map = {
@@ -442,6 +415,7 @@ class EvaluatorMetrics():
         self._dt_annos_valid = dt_annos_valid
         self._classes = classes
         self._iou_calculator = self.iou_calculator_map[metric]
+        self.force_single_assignement = force_single_assignement
         
         self.threshold_specific_results_dict = dict()
 
@@ -452,7 +426,7 @@ class EvaluatorMetrics():
     @property
     def total_dt_instances(self) -> int:
         return sum([len(self._dt_annos_valid[key].bboxes_3d) for key in self._dt_annos_valid.keys()])
-
+    
     def val_batch_evaluation(self, 
                              iou_threshold: float) -> dict:
         
@@ -467,17 +441,10 @@ class EvaluatorMetrics():
         assigned_max_overlaps = []
         assigned_labels = []
         
-        for key in self._gt_annos_valid.keys():
+        for i, key in enumerate(self._gt_annos_valid.keys()):
             gt_instance = self._gt_annos_valid[key]
             dt_instance = self._dt_annos_valid[key]
-            assign_result = iou_assigner.assign(pred_instances=dt_instance, gt_instances=gt_instance)
-
-            # dt_labels.append(dt_instance.labels_3d.tolist())
-            # dt_scores.append(dt_instance.scores.tolist())   
-            # assigned_gt_inds.append(assign_result.gt_inds.tolist())
-            # assigned_max_overlaps.append(assign_result.max_overlaps.tolist())
-            # assigned_labels.append(assign_result.labels.tolist())
-
+            assign_result = iou_assigner.assign(pred_instances=dt_instance, gt_instances=gt_instance, force_single_assignement=self.force_single_assignement)
             # Maybe something is not fully right here: Does it automatically mean that the labels correspond to the gt_labels?
 
             dt_labels.append(dt_instance.labels_3d)
@@ -496,19 +463,6 @@ class EvaluatorMetrics():
             'assigned_max_overlaps': torch.cat(assigned_max_overlaps),
             'assigned_labels': torch.cat(assigned_labels)
         }
-
-        # print("Debug: threshold_specific_results: ", threshold_specific_results)
-
-        # # print("Debug: threshold_specific_results: ", threshold_specific_results)
-
-        # # save these values into a file
-        # filename = 'threshold_specific_results.txt'
-        # with open(filename, 'w') as f:
-        #     for value in threshold_specific_results.values():
-        #         val_str = ', '.join(map(str, value.tolist()))
-        #         f.write(val_str + '\n')
-
-        # raise NotImplementedError
 
         self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
 
@@ -635,6 +589,7 @@ class EvaluatorMetrics():
         for level in iou_level:
             if not level in self.threshold_specific_results_dict.keys():
                 self.val_batch_evaluation(level)
+
             _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
 
             class_dict = dict()
@@ -647,6 +602,43 @@ class EvaluatorMetrics():
             level_dict[level] = class_dict
 
         return level_dict
+
+    
+    def mean_average_precision_score(self,
+                                    iou_level: Union[float, List[float]],
+                                    class_accuracy_requirements: Union[str, List[str]] = 'easy'):
+        """ 
+            This function computes the mean average precision score with the traditional method without using sklearn.
+
+            Args:
+                iou_level (Union[float, List[float]]): The IoU levels to be evaluated.
+                class_accuracy_requirements (Union[str, List[str]]): The class accuracy requirements to be evaluated. Defaults to 'easy'.
+
+            Returns:
+                Dict: A dictionary that contains the mean average precision scores for the different IoU levels and class accuracy requirements.
+
+        """
+        
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
+
+        if isinstance(class_accuracy_requirements, str):
+            class_accuracy_requirements = [class_accuracy_requirements]
+
+        map_level_dict = dict()
+
+        for level in iou_level:
+
+            if not level in self.threshold_specific_results_dict.keys():
+                self.val_batch_evaluation(level)
+            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+
+            y_pred, y_score = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
+            _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+
+            map_level_dict[level] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
+
+        return map_level_dict
     
     def precision_recall_curve(self,
                                iou_level: Union[float, List[float]],
@@ -692,7 +684,7 @@ class EvaluatorMetrics():
             # level_dict[level] = class_dict
 
             class_dict = dict()
-            y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+            y_pred, y_score = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
             precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
             class_dict['all_classes'] = {
                 'precision': precision,
@@ -827,3 +819,46 @@ class EvaluatorMetrics():
         cm = cm_dict[iou_level]['cm']
         disp = sk_metrics.ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self._classes)
         return disp.plot(include_values=True, cmap='viridis')
+    
+    def compute_ap(self,
+                   recall, precision, n=40):
+        """ Compute the average precision, given the recall and precision curves.
+        Code originally from https://github.com/rbgirshick/py-faster-rcnn.
+
+        # Arguments
+            recall:    The recall curve (list).
+            precision: The precision curve (list).
+        # Returns
+            The average precision as computed in py-faster-rcnn.
+        """
+        # correct AP calculation
+        # first append sentinel values at the end
+        mrec = np.concatenate(([0.0], recall, [1.0]))
+        mpre = np.concatenate(([0.0], precision, [0.0]))
+
+        # # compute the precision envelope
+        # for i in range(mpre.size - 1, 0, -1):
+        #     mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+        # # to calculate area under PR curve, look for points
+        # # where X axis (recall) changes value
+        # i = np.where(mrec[1:] != mrec[:-1])[0]
+
+        # # and sum (\Delta recall) * prec
+        # ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+        
+        ap_n = 0.
+
+        if not isinstance(n, float):
+            n = float(n)
+
+        up_n = n/10.
+
+        for t in np.arange(0., up_n, 0.1):
+            if np.sum(recall >= t) == 0:
+                p = 0
+            else:
+                p = np.max(precision[recall >= t])
+            ap_n = ap_n + p / n
+            
+        return ap_n
