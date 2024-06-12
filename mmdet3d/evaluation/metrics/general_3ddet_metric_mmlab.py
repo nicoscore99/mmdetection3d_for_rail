@@ -124,45 +124,50 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             print("Output directory does not exist. Creating it now.")
             os.makedirs(self.output_dir)
 
-    def process(self, data_batch: dict, data_samples: Sequence[dict]) -> dict:
-        """Process one batch of data samples and predictions.
+    # def process(self, data_batch: dict, data_samples: Sequence[dict]) -> dict:
+    #     """Process one batch of data samples and predictions.
 
-        The processed results should be stored in ``self.results``, which will
-        be used to compute the metrics when all batches have been processed.
+    #     The processed results should be stored in ``self.results``, which will
+    #     be used to compute the metrics when all batches have been processed.
 
-        Args:
-            data_batch (dict): A batch of data from the dataloader.
-            data_samples (Sequence[dict]): A batch of outputs from the model.
+    #     Args:
+    #         data_batch (dict): A batch of data from the dataloader.
+    #         data_samples (Sequence[dict]): A batch of outputs from the model.
 
 
-        Required format for the conversion:
-        {'_sample_idx_': {
-            'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
-                                [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
-                                [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
-                                [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
-                                [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
-                                [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
-            'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
-            'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
-        }
+    #     Required format for the conversion:
+    #     {'_sample_idx_': {
+    #         'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
+    #                             [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
+    #                             [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
+    #                             [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
+    #                             [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
+    #                             [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
+    #         'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
+    #         'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
+    #     }
         
-        """
+    #     """
 
-        for data_sample in data_samples:
+    #     for data_sample in data_samples:
 
-            print("Debug: data_sample: ", data_sample)
-            raise ValueError("Debug: Stop here")
+    #         results_dict = dict()
+    #         sample_idx = data_sample['lidar_path'].split('/')[-1][-7:-4]
+    #         dt_bboxes = InstanceData()
+    #         dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d']
+    #         dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d']
+    #         dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d']
+    #         results_dict[sample_idx] = dt_bboxes
 
-            results_dict = dict()
-            sample_idx = data_sample['lidar_path'].split('/')[-1][-7:-4]
-            dt_bboxes = InstanceData()
-            dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d']
-            dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d']
-            dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d']
-            results_dict[sample_idx] = dt_bboxes
+    #         self.results.append(results_dict)
 
-            self.results.append(results_dict)
+    def process(self, data_batch: dict, data_samples: Sequence[dict]) -> dict:
+
+        # Append the datasamples Sequence to the results list
+        # self.results += data_samples
+
+        # Append the datasamples Sequence to the results list
+        self.results += data_samples
 
     def compute_metrics(self, results: List[dict]) -> Dict[str, float]:
         """Compute the metrics from processed results.
@@ -194,8 +199,9 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         # load annotations
         ann_file = load(self.ann_file, backend_args=self.backend_args)
-        gt_annos = self.convert_from_ann_file(ann_file)
-        dt_annos = self.convert_from_results(results)
+        # gt_annos = self.convert_from_ann_file(ann_file)
+        gt_annos = self.convert_gt_from_results(results)
+        dt_annos = self.convert_dt_from_results(results)
 
         # print("Debug: gt_annos: ", gt_annos)
         # print("Debug: dt_annos: ", dt_annos)
@@ -244,122 +250,31 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
-    def convert_from_ann_file(self, ann_file: dict) -> dict:
-        """
-        Convert the annotations from the ann_file to the required format for the evaluation.
+    def convert_gt_from_results(self, results: List[dict]) -> dict:
 
-        Args:
-            ann_file (dict): The loaded annotation file.
+        gt_dict = dict()
+        for data_sample in results:
 
-        Returns:
-            dict: The converted annotations.
+            # print("Debug: data_sample: ", data_sample)
 
-        The ann_file has the following format:
-        {'instances': [{'alpha': 0.0,
-                'bbox': [-1.0, -1.0, -1.0, -1.0],
-                'bbox_3d': [139.85,
-                            14.59,
-                            1.0699999999999998,
-                            0.98,
-                            1.0,
-                            1.8,
-                            0.0],
-                'bbox_label': 0,
-                'bbox_label_3d': 0,
-                'difficulty': -1,
-                'group_id': 0,
-                'index': 0,
-                'occluded': 0,
-                'score': 0.0,
-                'truncated': 0.0},
-                {'alpha': 0.0,
-                'bbox': [-1.0, -1.0, -1.0, -1.0],
-                'bbox_3d': [230.78,
-                            -4.51,
-                            -0.08999999999999986,
-                            1.6,
-                            1.3,
-                            11.9,
-                            0.0],
-                'bbox_label': 5,
-                'bbox_label_3d': 5,
-                'difficulty': -1,
-                'group_id': 8,
-                'index': 8,
-                'occluded': 0,
-                'score': 0.0,
-                'truncated': 0.0}],
-         'lidar_points': {'lidar_path': '3_fire_site_3.1_083.bin',
-                          'num_pts_feats': 4},
-         'sample_idx': '083.bin'},
-
-        Required format for the conversion:
-        {'_sample_idx_': {
-            'bbox_3d': tensor([[ 43.3839, -19.6041,  -2.1520,   0.9658,   0.6022,   2.0313,   2.8344],
-                                [ 31.3530, -21.2475,  -2.3134,   0.8766,   0.8507,   1.9997,  -0.3569],
-                                [ 95.6967,  -9.9219,  -1.9124,   1.7009,   0.6550,   1.7863,  -0.2158],
-                                [ 11.2689,   7.4125,  -1.1116,   4.2148,   1.6975,   1.6820,   2.0275],
-                                [ 35.8330, -21.2327,  -1.1420,   3.9669,   1.6993,   1.5309,   1.5040],
-                                [ 33.7343, -15.4057,  -1.3091,   4.0293,   1.6570,   1.6490,   1.6808]]),
-            'labels_3d': tensor([0, 0, 1, 2, 2, 2]),
-            'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
-        }
-
-        Final output format:
-        {'_sample_idx_': InstanceData}
-
-        """
-        
-        annos_dict = dict()
-        for i, anno in enumerate(ann_file['data_list']):
-
-            # print("Debug: anno: ", anno)
             # raise ValueError("Debug: Stop here")
+            sample_idx = data_sample['lidar_path']
+            gt_bboxes = InstanceData()
+            # gt_instances = data_sample['instances']
+            # for instance in gt_instances:
+            #     gt_bboxes.bboxes_3d.append(instance['bbox_3d'])
+            #     gt_bboxes.labels_3d.append(instance['bbox_label_3d'])
 
-            # NOTE: This should be corrected and in the OSDAR23 conversion script: Use sample_idx without the .bin
-            # For now, only use the first three characters of the sample_idx
-            sample_idx = anno['lidar_points']['lidar_path'][-7:-4]
-            bbox_3d_lst = []
-            labels_3d_lst = []
-            scores_3d_lst = []
-            for instance in anno['instances']:
+            # If 'gt_labels_3d' is not a tensor, convert it to a tensor
+            if not isinstance(data_sample['eval_ann_info']['gt_labels_3d'], torch.Tensor):
+                data_sample['eval_ann_info']['gt_labels_3d'] = torch.from_numpy(data_sample['eval_ann_info']['gt_labels_3d'])
+            
+            gt_bboxes.bboxes_3d = data_sample['eval_ann_info']['gt_bboxes_3d'].tensor.to('cpu')
+            gt_bboxes.labels_3d = data_sample['eval_ann_info']['gt_labels_3d'].to('cpu')
+            gt_dict[sample_idx] = gt_bboxes
 
-                # bbox_3d = CameraInstance3DBoxes(tensor=[instance['bbox_3d']])
-                # bbox_3d_lidar = bbox_3d.convert_to(Box3DMode.LIDAR, np.linalg.inv(instance['lidar2cam']))
-                # bbox_3d = [bbox_3d_lidar.bottom_center, bbox_3d_lidar.dims, bbox_3d_lidar.yaw]
-                # bbox_3d = torch.cat(bbox_3d, dim=1)
+        return gt_dict  
 
-                # For Kitti, bbox3d needs to be converted to the lidar frame
-                bbox_3d_lst.append(bbox_3d)
-                labels_3d_lst.append(instance['bbox_label'])
-                scores_3d_lst.append(instance['score']) # Currently, this value is unnenecessary and will just be 0.00 since it is not implemented 
-
-
-            gt_instance = InstanceData()
-            gt_instance.bboxes_3d = torch.tensor(bbox_3d_lst)
-            gt_instance.labels_3d = torch.tensor(labels_3d_lst)
-            gt_instance.scores = torch.tensor(scores_3d_lst)        
-            annos_dict[sample_idx] = gt_instance
-
-        return annos_dict
-    
-    def convert_from_results(self, results: List[dict]) -> dict:
-        """
-        
-        Convert the results from the model to the required format for the evaluation. Since the processing is already done in 
-        the process method, the results are already in the required format. Only step left is to concatinate the list into a
-        single dict.
-
-        Args:
-            results (List[dict]): The processed results of the whole dataset.
-
-        Returns:
-            dict: The converted results.
-        
-        """
-        merged_dict = {k: v for d in results for k, v in d.items()}
-        return merged_dict
-    
     def filter_valid_gt_annos(self, annos: dict) -> dict:
         """
         
@@ -376,6 +291,9 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         annos_valid = dict()
 
         for key in annos.keys():
+
+            assert len(annos[key].bboxes_3d) == len(annos[key].labels_3d), "The number of bounding boxes and labels are not the same."
+
             _bbox_3d = annos[key].bboxes_3d
             
             # Check if any dimension is empty
@@ -386,16 +304,21 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             
             bbox_3d_center = _bbox_3d[:, :3]
             valid_inds = ((bbox_3d_center[:, 0] >= self.pcd_limit_range[0]) &
-                          (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
-                          (bbox_3d_center[:, 1] >= self.pcd_limit_range[1]) &
-                          (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
-                          (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
-                          (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
+                        (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
+                        (bbox_3d_center[:, 1] >= self.pcd_limit_range[1]) &
+                        (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
+                        (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
+                        (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
+            
+            print("Debug: bboxes_3d: ", annos[key].bboxes_3d)
+            print("Debug: labels_3d: ", annos[key].labels_3d)
+            print("Debug: valid_inds: ", valid_inds)
             
             instance_data_valid = InstanceData()
             instance_data_valid.bboxes_3d = annos[key].bboxes_3d[valid_inds]
+
+            # Check if any dimension is empty
             instance_data_valid.labels_3d = annos[key].labels_3d[valid_inds]
-            instance_data_valid.scores = annos[key].scores[valid_inds]
 
             annos_valid[key] = instance_data_valid
 
@@ -408,6 +331,24 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
             
         return annos_valid, percentage
+    
+        
+    def convert_dt_from_results(self, results: List[dict]) -> dict:
+        
+        dt_dict = dict()
+        for data_sample in results:
+                sample_idx = data_sample['lidar_path']
+                dt_bboxes = InstanceData()
+
+                if not isinstance(data_sample['pred_instances_3d']['labels_3d'], torch.Tensor):
+                    data_sample['pred_instances_3d']['labels_3d'] = torch.from_numpy(data_sample['pred_instances_3d']['labels_3d'])
+
+                dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d'].tensor.to('cpu')
+                dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d'].to('cpu')
+                dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d'].to('cpu')
+                dt_dict[sample_idx] = dt_bboxes
+
+        return dt_dict
     
     def filter_valid_dt_annos(self, annos: dict) -> dict:
         """
@@ -425,8 +366,24 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         annos_valid = dict()
 
         for key in annos.keys():
-            _bbox_3d = annos[key].bboxes_3d.tensor
+
+            assert len(annos[key].bboxes_3d) == len(annos[key].labels_3d), "The number of bounding boxes and labels are not the same."
+
+            print("Debug2: annos[key].bboxes_3d: ", annos[key])
+            print("Debug2: annos[key].bboxes_3d: ", annos[key].bboxes_3d)
+
+            _bbox_3d = annos[key].bboxes_3d
+
+            # Check if any dimension is empty
+            if _bbox_3d.size(0) == 0:
+                continue
+            elif _bbox_3d.size(1) == 0:
+                continue
+
             bbox_3d_center = _bbox_3d[:, :3]
+
+            print("Debug2: bbox_3d_center: ", bbox_3d_center)
+
             valid_inds = ((bbox_3d_center[:, 0] >= self.pcd_limit_range[0]) &
                           (bbox_3d_center[:, 0] <= self.pcd_limit_range[3]) &
                           (bbox_3d_center[:, 1] >= self.pcd_limit_range[1]) &
@@ -443,6 +400,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         num_bbox_before = sum([len(annos[key].bboxes_3d) for key in annos.keys()])
         num_bbox_after = sum([len(annos_valid[key].bboxes_3d) for key in annos_valid.keys()])
+
         if num_bbox_before == 0:
             percentage = 0.0
         else:
