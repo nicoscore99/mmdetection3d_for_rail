@@ -64,7 +64,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  ann_file: str,
                  metric: str = 'det3d',
                  pcd_limit_range: List[float] = [0, -39.68, -20, 69.12, 39.68, 20],
-                 force_single_assignement: bool = True,
+                #  pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 1],
+                 force_single_assignement: bool = False,
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
                  default_cam_key: str = 'CAM2',
@@ -201,7 +202,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             print_log("The number of gt instances is less than 10, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
-        if not self.evaluator.total_dt_instances >= 10:
+        if not self.evaluator.total_dt_instances >= 1:
             print_log("The number of dt instances is less than 10, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
@@ -209,6 +210,9 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                                                                                              class_accuracy_requirements=['easy', 'hard'])
         # evaluation_results_dict['mAP'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
         #                                                                             class_accuracy_requirements='hard')
+        
+        evaluation_results_dict['mAP40'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
+                                                                                       class_accuracy_requirements=['easy', 'hard'])
 
         evaluation_results_dict['F1'] = self.evaluator.sklearn_f1_score(iou_level=self.difficulty_levels,
                                                                         class_accuracy_requirements=['easy', 'hard'])
@@ -230,9 +234,9 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             self.save_plot(plot=self.evaluator.confusion_matrix_plot(iou_level=0.5), filename = 'confusion_matrix_plot.png')
 
         # Save the evaluation results to a .json file
-        save_path = 'evaluation_kitti_on_kitti_pointpillars_3class_fsa.json'
-        with open(save_path, 'w') as f:
-            json.dump(evaluation_results_dict, f, indent=4)
+        # save_path = 'evaluation_kitti_on_osdar_3class_medium_range_pointpillars.json'
+        # with open(save_path, 'w') as f:
+        #     json.dump(evaluation_results_dict, f, indent=4)
             
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
@@ -319,6 +323,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         
     def convert_dt_from_results(self, results: List[dict]) -> dict:
         
+        print("Debug: results: ", results)
+        
         dt_dict = dict()
         for data_sample in results:
                 sample_idx = data_sample['lidar_path']
@@ -331,6 +337,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                 dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d'].to('cpu')
                 dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d'].to('cpu')
                 dt_dict[sample_idx] = dt_bboxes
+                
+        raise ValueError("Debug: Stop here")
 
         return dt_dict
     
@@ -672,20 +680,20 @@ class EvaluatorMetrics():
             class_accuracy_requirements = [class_accuracy_requirements]
 
         map_level_dict = dict()
-
         for level in iou_level:
 
-            if not level in self.threshold_specific_results_dict.keys():
-                self.val_batch_evaluation(level)
-            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+            class_dict = dict()
+            for class_accuracy_requirement in class_accuracy_requirements:
+                if not level in self.threshold_specific_results_dict.keys():
+                    self.val_batch_evaluation(level)
+                _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+                
+                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+                _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
+                
+                class_dict[class_accuracy_requirement] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
 
-            tp_binary, score, y_true, y_pred = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
-            _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
-
-            print("Debug: Precision: ", _precision)
-            print("Debug: Recall: ", _recall)
-
-            map_level_dict[level] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
+            map_level_dict[level] = class_dict
 
         return map_level_dict
     
@@ -704,33 +712,6 @@ class EvaluatorMetrics():
             if not level in self.threshold_specific_results_dict.keys():
                 self.val_batch_evaluation(level)
             _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            # class_dict = dict()
-            # if class_idx:
-            #     for cls_idx in class_idx:
-            #         _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
-            #         y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
-            #         precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
-
-            #         class_dict[self._classes[cls_idx]] = {
-            #             'precision': precision,
-            #             'recall': recall,
-            #             'y_true': y_pred,
-            #             'y_probas': y_score,
-            #             'labels': self._classes
-            #         }
-            # else:
-            #     y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
-            #     precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
-            #     class_dict['all_classes'] = {
-            #         'precision': precision,
-            #         'recall': recall,
-            #         'y_true': y_pred,
-            #         'y_probas': y_score,
-            #         'labels': self._classes
-            #     }
-        
-            # level_dict[level] = class_dict
 
             class_dict = dict()
             tp_binary, score, y_true, y_pred  = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
@@ -885,29 +866,29 @@ class EvaluatorMetrics():
         mrec = np.concatenate(([0.0], recall, [1.0]))
         mpre = np.concatenate(([0.0], precision, [0.0]))
 
-        # # compute the precision envelope
-        for i in range(mpre.size - 1, 0, -1):
-            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+        # # # compute the precision envelope
+        # for i in range(mpre.size - 1, 0, -1):
+        #     mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
 
-        # to calculate area under PR curve, look for points
-        # where X axis (recall) changes value
-        i = np.where(mrec[1:] != mrec[:-1])[0]
+        # # to calculate area under PR curve, look for points
+        # # where X axis (recall) changes value
+        # i = np.where(mrec[1:] != mrec[:-1])[0]
 
-        # and sum (\Delta recall) * prec
-        ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+        # # and sum (\Delta recall) * prec
+        # ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
         
-        # ap_n = 0.
+        ap_n = 0.
 
-        # if not isinstance(n, float):
-        #     n = float(n)
+        if not isinstance(n, float):
+            n = float(n)
 
-        # up_n = n/10.
+        up_n = n/10.
 
-        # for t in np.arange(0., up_n, 0.1):
-        #     if np.sum(recall >= t) == 0:
-        #         p = 0
-        #     else:
-        #         p = np.max(precision[recall >= t])
-        #     ap_n = ap_n + p / n
+        for t in np.arange(0., up_n, 0.1):
+            if np.sum(recall >= t) == 0:
+                p = 0
+            else:
+                p = np.max(precision[recall >= t])
+            ap_n = ap_n + p / n
             
-        return ap_all
+        return ap_n
