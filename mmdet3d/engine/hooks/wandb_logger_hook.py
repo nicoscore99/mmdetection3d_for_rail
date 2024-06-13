@@ -91,8 +91,8 @@ class WandbLoggerHook(LoggerHook):
             key_configured = self._wandb.login(key=self.wandb_auth_config['api_key'])        
             assert key_configured, '[WandbLoggerHook] wandb api key not configured'
 
-        # Initialize wandb with kwards and config
-        self.run = self._wandb.init(**self._init_kwargs)
+        # # Initialize wandb with kwards and config
+        # self.run = self._wandb.init(**self._init_kwargs)
 
         # Define the metrics
         self._define_metric_cfg = {
@@ -107,6 +107,20 @@ class WandbLoggerHook(LoggerHook):
         if metric_cfg is not None:
             self._define_metric_cfg = metric_cfg
 
+
+    def wandb_login(self):
+        key_configure = self.wandb.login(key=self.wandb_auth_config['api_key'], relogin=True, force=True)
+        assert key_configure, '[WandbLoggerHook] wandb api key not configured'
+
+    def before_run(self, runner: Runner) -> None:
+        
+        # Initialize wandb with kwards and config
+        
+        runner_cfg = runner.cfg._to_lazy_dict()  
+        self._init_kwargs['config'] = runner_cfg
+                
+        self.run = self._wandb.init(**self._init_kwargs)
+
         for values in set(self._define_metric_cfg.values()):
             self._wandb.define_metric(values)
 
@@ -115,18 +129,12 @@ class WandbLoggerHook(LoggerHook):
             key_all_subsubkeys = key + '/*'
             self._wandb.define_metric(key_all_subsubkeys, step_metric=value)
 
-
-    def wandb_login(self):
-        key_configure = self.wandb.login(key=self.wandb_auth_config['api_key'], relogin=True, force=True)
-        assert key_configure, '[WandbLoggerHook] wandb api key not configured'
-
-    def before_run(self, runner: Runner) -> None:
-
         # Check that the runner exists
         assert runner is not None, '[WandbLoggerHook] runner must be provided'
         assert isinstance(runner, Runner), f'[WandbLoggerHook] runner must be an instance of Runner, got {type(runner)}'
 
         self._wandb.watch(runner.model, self._watch_kwargs)
+        
     
     def after_train_iter(self,
                         runner,

@@ -139,9 +139,14 @@ val_evaluator = dict(
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23/training/pointpillars_test_delete_after_use/',
+    output_dir='data/osdar23/training/rtx4k_pointpillars_run2/',
+    pcd_limit_range=[0, -39.68, -3, 101.12, 39.68, 1],
+    save_graphics=False,
     backend_args=backend_args)
 test_evaluator = val_evaluator
+
+# val_evaluator = dict()
+# test_evaluator = dict()
 
 vis_backends = [dict(type='LocalVisBackend')]
 visualizer = dict(
