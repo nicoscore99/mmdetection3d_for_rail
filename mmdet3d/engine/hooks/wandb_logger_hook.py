@@ -44,7 +44,8 @@ class WandbLoggerHook(LoggerHook):
                  metric_cfg: Optional[Dict[str, Union[str, Dict]]] = None,
                  commit: Optional[str] = None,
                  watch_kwargs: Optional[Dict] = None,
-                 log_artifact: bool = False):
+                 log_artifact: bool = False,
+                 log_model_every_n_epochs: int = 1):
         super().__init__()
 
         self.curve_visualization_wandb_logging_map = {
@@ -62,6 +63,7 @@ class WandbLoggerHook(LoggerHook):
         self._commit = commit
         self._watch_kwargs = watch_kwargs
         self._log_artifact = log_artifact
+        self.log_model_every_n_epochs = log_model_every_n_epochs
 
         # Code from WandVisBackend
         if not osp.exists(self._save_dir):
@@ -148,6 +150,10 @@ class WandbLoggerHook(LoggerHook):
             for key, value in outputs.items():
                 self._wandb.log({key: value, 'train_iter': runner.iter}, commit=self._commit)
 
+    def before_save_checkpoint(self, runner: Runner) -> None:
+        checkpoint_file_path = osp.join(self._save_dir, f'checkpoint_{runner.epoch}.pth')
+        
+
             
     def after_train_epoch(self,
                           runner: Runner,
@@ -160,6 +166,9 @@ class WandbLoggerHook(LoggerHook):
 
             for key, value in outputs.items():
                 self._wandb.log({key: value, 'train_epoch': runner.epoch}, commit=self._commit)
+
+        if self.every_n_epochs(runner, n=self.log_model_every_n_epochs, start=0):
+            self.save_model(runner, epoch=runner.epoch)
 
     def after_val_iter(self,
                        runner,

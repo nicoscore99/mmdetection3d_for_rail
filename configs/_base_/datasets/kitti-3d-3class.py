@@ -156,9 +156,11 @@ test_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 val_evaluator = dict(
-    type='KittiMetric',
+    type='General_3dDet_Metric_MMLab',
     ann_file=data_root + 'kitti_infos_val.pkl',
-    metric='bbox',
+    metric='det3d',
+    classes=class_names,
+    output_dir='data/osdar23/training/pointpillars_test_delete_after_use/',
     backend_args=backend_args)
 test_evaluator = val_evaluator
 

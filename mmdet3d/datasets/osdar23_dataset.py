@@ -52,6 +52,11 @@ class OSDaR23Dataset(Det3DDataset):
             Defaults to [0, -40, -3, 70.4, 40, 0.0].
     """
     # TODO: use full classes of kitti
+    # METAINFO = {
+    #     'classes': ('pedestrian', 'cyclist', 'car'),
+    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
+    # }
+
     METAINFO = {
         'classes': ('pedestrian', 'car'),
         'palette': [(106, 0, 228), (165, 42, 42)]
