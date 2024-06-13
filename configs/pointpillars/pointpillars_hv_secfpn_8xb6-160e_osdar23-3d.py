@@ -5,13 +5,15 @@ _base_ = [
 ]
 
 dataset = dict(type='OSDaR23Dataset')
-point_cloud_range =  [0, -39.68, -3, 101.12, 39.68, 1]
+point_cloud_range =  [0, -39.68, -3, 69.12, 39.68, 1]
 # point_cloud_range = [0, -43.2, -3, 99.20, 42.2, 1]
 # dataset settings
-data_root = 'data/osdar23/'
-class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
+data_root = 'data/osdar23_2class/'
+class_names = ['pedestrian', 'car']
 metainfo = dict(classes=class_names)
 backend_args = None
+
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
 
 # PointPillars adopted a different sampling strategies among classes
 db_sampler = dict(
@@ -19,10 +21,10 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_min_points=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5, dontcare=5)
+        filter_by_min_points=dict(pedestrian=5, car=5),
         ),
     classes=class_names,
-    sample_groups=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5, dontcare=5),
+    sample_groups=dict(pedestrian=5, car=5),
     points_loader=dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -155,12 +157,12 @@ test_cfg = dict()
 # ]
 custom_hooks = [
     dict(type='WandbLoggerHook', 
-         save_dir='data/osdar23/training/rtx4k_pointpillars_run3/',
+         save_dir='data/osdar23_2class/training/rtx4k_pointpillars_run6_2class/',
          yaml_config_path='wandb_auth.yaml',
          log_artifact=True,
          init_kwargs={
              'entity': 'railsensing',
              'project': 'mmdetection3d',
-             'name': 'rtx4k_pointpillars_run3'
+             'name': 'rtx4k_pointpillars_run6_2class'
              })
 ]

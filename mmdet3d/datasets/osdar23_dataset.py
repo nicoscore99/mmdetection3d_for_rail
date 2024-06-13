@@ -53,8 +53,8 @@ class OSDaR23Dataset(Det3DDataset):
     """
     # TODO: use full classes of kitti
     METAINFO = {
-        'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
-        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192), (197, 226, 255), (0, 60, 100)]
+        'classes': ('pedestrian', 'car'),
+        'palette': [(106, 0, 228), (165, 42, 42)]
     }
 
     def __init__(self,
@@ -67,7 +67,7 @@ class OSDaR23Dataset(Det3DDataset):
                  box_type_3d: str = 'LiDAR',
                  filter_empty_gt: bool = True,
                  test_mode: bool = False,
-                 pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 0.0],
+                 pcd_limit_range: List[float] = [0, -39.68, -3, 69.12, 39.68, 1],
                  **kwargs) -> None:
         
         assert len(OSDaR23Dataset.METAINFO['classes']) == len(OSDaR23Dataset.METAINFO['palette'])

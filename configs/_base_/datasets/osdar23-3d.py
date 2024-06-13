@@ -4,8 +4,8 @@ custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
                                'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)
 dataset = dict(type='OSDaR23Dataset')
 dataset_type = 'OSDaR23Dataset'
-data_root = 'data/osdar23/'
-class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
+data_root = 'data/osdar23_2class/'
+class_names = ['pedestrian', 'car']
 # According to Robosense M1+ specifications (Range: 200m, Horizontal FOV: 120°)
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
@@ -17,13 +17,7 @@ metainfo = dict(classes=class_names)
 # This thing is for reading and writing data from/to S3
 # data_root = 's3://openmmlab/datasets/detection3d/kitti/'
 
-# Method 2: Use backend_args, file_client_args in versions before 1.1.0
-# backend_args = dict(
-#     backend='petrel',
-#     path_mapping=dict({
-#         './data/': 's3://openmmlab/datasets/detection3d/',
-#          'data/': 's3://openmmlab/datasets/detection3d/'
-#      }))
+
 backend_args = None
 
 db_sampler = dict(
@@ -31,9 +25,9 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        # filter_by_min_points=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5),
+        filter_by_min_points=dict(pedestrian=5, car=5),
     classes=class_names,
-    sample_groups=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5),
+    sample_groups=dict(pedestrian=5, car=5),
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
@@ -80,7 +74,7 @@ eval_pipeline = [
          keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=6,
     num_workers=4,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -101,8 +95,8 @@ train_dataloader = dict(
             box_type_3d='LiDAR',
             backend_args=backend_args)))
 val_dataloader = dict(
-    batch_size=1,
-    num_workers=1,
+    batch_size=6,
+    num_workers=4,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
@@ -118,8 +112,8 @@ val_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 test_dataloader = dict(
-    batch_size=1,
-    num_workers=1,
+    batch_size=6,
+    num_workers=4,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
@@ -139,9 +133,9 @@ val_evaluator = dict(
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23/training/rtx4k_pointpillars_run2/',
-    pcd_limit_range=[0, -39.68, -3, 101.12, 39.68, 1],
-    save_graphics=False,
+    output_dir='data/osdar23_2class/training/rtx4k_pointpillars_run6_2class/',
+    pcd_limit_range=[0, -39.68, -10, 69.12, 39.68, 10],
+    save_graphics=True,
     backend_args=backend_args)
 test_evaluator = val_evaluator
 

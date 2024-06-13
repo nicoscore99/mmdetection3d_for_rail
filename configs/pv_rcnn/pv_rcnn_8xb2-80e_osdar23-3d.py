@@ -5,22 +5,24 @@ _base_ = [
 
 custom_hooks = [
     dict(type='WandbLoggerHook', 
-         save_dir='data/osdar23/training/rtx4k_pvrcnn_run2/',
+         save_dir='data/osdar23_3class/training/rtx4k_pvrcnn_run5_3class/',
          yaml_config_path='wandb_auth.yaml',
          log_artifact=True,
          init_kwargs={
              'entity': 'railsensing',
              'project': 'pv-rcnn',
-             'name': 'rtx4k_pvrcnn_run2'
+             'name': 'rtx4k_pvrcnn_run5_3class'
              })
 ]
 
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
+
 dataset = dict(type='OSDaR23Dataset')
-voxel_size = [0.2, 0.2, 0.2]
+voxel_size = [0.05, 0.05, 0.1]
 point_cloud_range = [0, -40, -3, 70.4, 40, 1]
 
-data_root = 'data/osdar23/'
-class_names = ['pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare']
+data_root = 'data/osdar23_3class/'
+class_names = ['pedestrian', 'cyclist', 'car']
 metainfo = dict(CLASSES=class_names)
 backend_args = None
 db_sampler = dict(
@@ -28,9 +30,9 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_min_points=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5, dontcare=5)),
+        filter_by_min_points=dict(pedestrian=5, cyclist=5, car=5)),
     classes=class_names,
-    sample_groups=dict(pedestrian=5, car=5, train=5, bike=5, unknown=5, dontcare=5),
+    sample_groups=dict(pedestrian=5, cyclist=5, car=5),
     points_loader=dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -93,7 +95,7 @@ model = dict(
         type='Det3DDataPreprocessor',
         voxel=True,
         voxel_layer=dict(
-            max_num_points=5,  # max_points_per_voxel
+            max_num_points=20,  # max_points_per_voxel
             point_cloud_range=point_cloud_range,
             voxel_size=voxel_size,
             max_voxels=(12000, 12000))),
@@ -168,7 +170,7 @@ model = dict(
         out_channels=[256, 256]),
     rpn_head=dict(
         type='PartA2RPNHead',
-        num_classes=6,
+        num_classes=3,
         in_channels=512,
         feat_channels=512,
         use_direction_classifier=True,
@@ -177,11 +179,12 @@ model = dict(
             type='Anchor3DRangeGenerator',
             ranges=[[0, -40.0, -0.6, 70.4, 40.0, -0.6],
                     [0, -40.0, -0.6, 70.4, 40.0, -0.6],
-                    [0, -40.0, -1.78, 70.4, 40.0, -1.78],
-                    [0, -40.0, -0.6, 70.4, 40.0, -0.6],
-                    [0, -40.0, -1.78, 70.4, 40.0, -1.78],
-                    [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
-            sizes=[[0.89, 0.86, 1.89], [4.3, 3.07, 2.79], [62.43, 4.01, 4.27], [1.72, 0.89, 1.27], [0.45, 0.45, 0.41], [1.62, 1.14, 4.67]], 
+                    # [0, -40.0, -1.78, 70.4, 40.0, -1.78],
+                    [0, -40.0, -0.6, 70.4, 40.0, -0.6]],
+                    # [0, -40.0, -1.78, 70.4, 40.0, -1.78],
+                    # [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
+            # sizes=[[0.89, 0.86, 1.89], [4.3, 3.07, 2.79], [62.43, 4.01, 4.27], [1.72, 0.89, 1.27], [0.45, 0.45, 0.41], [1.62, 1.14, 4.67]], 
+            sizes=[[0.89, 0.86, 1.89], [4.3, 3.07, 2.79],  [1.72, 0.89, 1.27]], 
             rotations=[0, 1.57],
             reshape_out=False),
         diff_rad_by_sin=True,
@@ -201,7 +204,7 @@ model = dict(
             loss_weight=0.2)),
     roi_head=dict(
         type='PVRCNNRoiHead',
-        num_classes=6,
+        num_classes=3,
         semantic_head=dict(
             type='ForegroundSegmentationHead',
             in_channels=640,
@@ -229,7 +232,7 @@ model = dict(
             type='PVRCNNBBoxHead',
             in_channels=128,
             grid_size=6,
-            num_classes=6,
+            num_classes=3,
             class_agnostic=True,
             shared_fc_channels=(256, 256),
             reg_channels=(256, 256),
@@ -261,17 +264,17 @@ model = dict(
             dict(  # for Car
                 type='Max3DIoUAssigner',
                 iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
-                pos_iou_thr=0.6,
-                neg_iou_thr=0.45,
-                min_pos_iou=0.45,
+                pos_iou_thr=0.5,
+                neg_iou_thr=0.35,
+                min_pos_iou=0.35,
                 ignore_iof_thr=-1),
-            dict(  # for Train
-                type='Max3DIoUAssigner',
-                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
-                pos_iou_thr=0.6,
-                neg_iou_thr=0.45,
-                min_pos_iou=0.45,
-                ignore_iof_thr=-1),
+            # dict(  # for Train
+            #     type='Max3DIoUAssigner',
+            #     iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+            #     pos_iou_thr=0.6,
+            #     neg_iou_thr=0.45,
+            #     min_pos_iou=0.45,
+            #     ignore_iof_thr=-1),
             dict(  # for Bike
                 type='Max3DIoUAssigner',
                 iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
@@ -279,20 +282,20 @@ model = dict(
                 neg_iou_thr=0.35,
                 min_pos_iou=0.35,
                 ignore_iof_thr=-1),
-            dict(  # for Unknown
-                type='Max3DIoUAssigner',
-                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
-                pos_iou_thr=0.6,
-                neg_iou_thr=0.45,
-                min_pos_iou=0.45,
-                ignore_iof_thr=-1),
-            dict(  # for Dontcare
-                type='Max3DIoUAssigner',
-                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
-                pos_iou_thr=0.6,
-                neg_iou_thr=0.45,
-                min_pos_iou=0.45,
-                ignore_iof_thr=-1),
+            # dict(  # for Unknown
+            #     type='Max3DIoUAssigner',
+            #     iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+            #     pos_iou_thr=0.6,
+            #     neg_iou_thr=0.45,
+            #     min_pos_iou=0.45,
+            #     ignore_iof_thr=-1),
+            # dict(  # for Dontcare
+            #     type='Max3DIoUAssigner',
+            #     iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+            #     pos_iou_thr=0.6,
+            #     neg_iou_thr=0.45,
+            #     min_pos_iou=0.45,
+            #     ignore_iof_thr=-1),
             ],
             allowed_border=0,
             pos_weight=-1,
@@ -310,50 +313,50 @@ model = dict(
                     type='Max3DIoUAssigner',
                     iou_calculator=dict(
                         type='BboxOverlaps3D', coordinate='lidar'),
-                    pos_iou_thr=0.55,
-                    neg_iou_thr=0.55,
-                    min_pos_iou=0.55,
-                    ignore_iof_thr=-1),
-                dict(  # for Cyclist
-                    type='Max3DIoUAssigner',
-                    iou_calculator=dict(
-                        type='BboxOverlaps3D', coordinate='lidar'),
-                    pos_iou_thr=0.55,
-                    neg_iou_thr=0.55,
-                    min_pos_iou=0.55,
+                    pos_iou_thr=0.3,
+                    neg_iou_thr=0.3,
+                    min_pos_iou=0.3,
                     ignore_iof_thr=-1),
                 dict(  # for Car
                     type='Max3DIoUAssigner',
                     iou_calculator=dict(
                         type='BboxOverlaps3D', coordinate='lidar'),
-                    pos_iou_thr=0.55,
-                    neg_iou_thr=0.55,
-                    min_pos_iou=0.55,
+                    pos_iou_thr=0.3,
+                    neg_iou_thr=0.3,
+                    min_pos_iou=0.3,
                     ignore_iof_thr=-1),
                 dict(  # for Car
                     type='Max3DIoUAssigner',
                     iou_calculator=dict(
                         type='BboxOverlaps3D', coordinate='lidar'),
-                    pos_iou_thr=0.55,
-                    neg_iou_thr=0.55,
-                    min_pos_iou=0.55,
+                    pos_iou_thr=0.3,
+                    neg_iou_thr=0.3,
+                    min_pos_iou=0.3,
                     ignore_iof_thr=-1),
-                dict(  # for Car
-                    type='Max3DIoUAssigner',
-                    iou_calculator=dict(
-                        type='BboxOverlaps3D', coordinate='lidar'),
-                    pos_iou_thr=0.55,
-                    neg_iou_thr=0.55,
-                    min_pos_iou=0.55,
-                    ignore_iof_thr=-1),
-                dict(  # for Car
-                    type='Max3DIoUAssigner',
-                    iou_calculator=dict(
-                        type='BboxOverlaps3D', coordinate='lidar'),
-                    pos_iou_thr=0.55,
-                    neg_iou_thr=0.55,
-                    min_pos_iou=0.55,
-                    ignore_iof_thr=-1)
+                # dict(  # for Car
+                #     type='Max3DIoUAssigner',
+                #     iou_calculator=dict(
+                #         type='BboxOverlaps3D', coordinate='lidar'),
+                #     pos_iou_thr=0.55,
+                #     neg_iou_thr=0.55,
+                #     min_pos_iou=0.55,
+                #     ignore_iof_thr=-1),
+                # dict(  # for Car
+                #     type='Max3DIoUAssigner',
+                #     iou_calculator=dict(
+                #         type='BboxOverlaps3D', coordinate='lidar'),
+                #     pos_iou_thr=0.55,
+                #     neg_iou_thr=0.55,
+                #     min_pos_iou=0.55,
+                #     ignore_iof_thr=-1),
+                # dict(  # for Car
+                #     type='Max3DIoUAssigner',
+                #     iou_calculator=dict(
+                #         type='BboxOverlaps3D', coordinate='lidar'),
+                #     pos_iou_thr=0.55,
+                #     neg_iou_thr=0.55,
+                #     min_pos_iou=0.55,
+                #     ignore_iof_thr=-1)
             ],
             sampler=dict(
                 type='IoUNegPiecewiseSampler',
@@ -391,10 +394,12 @@ val_evaluator = dict(
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23/training/rtx4k_pvrcnn_run2',
+    output_dir='data/osdar23_3class/training/rtx4k_pvrcnn_run5_3class/',
+    pcd_limit_range=[0, -40, -3, 70.4, 40, 5],
+    save_graphics=True,
     backend_args=backend_args)
 
-lr = 0.001
+lr = 0.002
 optim_wrapper = dict(optimizer=dict(lr=lr))
 param_scheduler = [
     # learning rate scheduler

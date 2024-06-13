@@ -539,8 +539,17 @@ def update_osdar23_infos(pkl_path, out_dir):
 
     # TODO: This should really not be hardcoded in here!!!
 
+    # METAINFO = {
+    #     'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
+    # }
+    
+    
+    # METAINFO = {
+    #     'classes': ('pedestrian', 'cyclist', 'car'),
+    # }
+    
     METAINFO = {
-        'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
+        'classes': ('pedestrian', 'car'),
     }
 
     assert METAINFO['classes'] == OSDaR23Dataset.METAINFO['classes'], 'The classes definded in \
