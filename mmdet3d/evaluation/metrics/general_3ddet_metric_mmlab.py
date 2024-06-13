@@ -5,6 +5,7 @@ from os import path as osp
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 from sklearn import metrics
 from abc import ABC, abstractmethod
+import json
 
 import sklearn.metrics as sk_metrics
 import matplotlib.pyplot as plt
@@ -63,7 +64,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  ann_file: str,
                  metric: str = 'det3d',
                  pcd_limit_range: List[float] = [0, -39.68, -20, 69.12, 39.68, 20],
-                 force_single_assignement: bool = False,
+                 force_single_assignement: bool = True,
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
                  default_cam_key: str = 'CAM2',
@@ -204,14 +205,17 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             print_log("The number of dt instances is less than 10, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
-        # evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
-        #                                                                                  class_accuracy_requirements='hard')
+        evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
+                                                                                             class_accuracy_requirements=['easy', 'hard'])
+        # evaluation_results_dict['mAP'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
+        #                                                                             class_accuracy_requirements='hard')
 
-        evaluation_results_dict['mAP'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements='hard')
+        evaluation_results_dict['F1'] = self.evaluator.sklearn_f1_score(iou_level=self.difficulty_levels,
+                                                                        class_accuracy_requirements=['easy', 'hard'])
+
 
         evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                       class_accuracy_requirements='hard',
+                                                                                       class_accuracy_requirements=['easy', 'hard'],
                                                                                        class_idx=range(len(self.classes)))
 
         level_lower_bound = self.difficulty_levels[0]
@@ -224,6 +228,11 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             self.save_plot(plot=self.evaluator.precision_recall_plot(iou_level=0.5), filename = 'precision_recall_plot.png')
             self.save_plot(plot=self.evaluator.roc_plot(iou_level=0.5), filename = 'roc_plot.png')
             self.save_plot(plot=self.evaluator.confusion_matrix_plot(iou_level=0.5), filename = 'confusion_matrix_plot.png')
+
+        # Save the evaluation results to a .json file
+        save_path = 'evaluation_kitti_on_kitti_pointpillars_3class_fsa.json'
+        with open(save_path, 'w') as f:
+            json.dump(evaluation_results_dict, f, indent=4)
             
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
@@ -491,17 +500,20 @@ class EvaluatorMetrics():
             filtered_dict (dict): A dict that contains the results that were, if this is wanted, already filtered for detection labels.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: A tuple that contains the true positives for the detection labels and the corresponding scores.
+            tp_binary (torch.Tensor): A tensor that indicates if a detection is a true positive or not.
+            score (torch.Tensor): A tensor that contains the confidence scores of the detections.
+            y_true (torch.Tensor): A tensor that contains the true labels of the detections.
+            y_pred (torch.Tensor): A tensor that contains the predicted labels of the detections.
 
         ***Attention***: True positives are defined here as detections, that have a valid, corresponding bounding box AND the correct label.
         
         """
         
         tp_criterion = filtered_dict['dt_labels'] == filtered_dict['assigned_labels']
-        tp = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
+        tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
         score = filtered_dict['confidence']
-        
-        return tp, score
+
+        return tp_binary, score, filtered_dict['assigned_labels'], filtered_dict['dt_labels']
 
     def tp_detection(self,
                      filtered_dict: dict) -> torch.Tensor:
@@ -511,7 +523,11 @@ class EvaluatorMetrics():
             filtered_dict (dict): A dict that contains the results that were, if this is wanted, already filtered for detection labels.
 
         Returns:
-            torch.Tensor: A tensor that contains the true positives for the detection labels.
+            tp (torch.Tensor): A tensor that indicates if a detection is a true positive or not.
+            score (torch.Tensor): A tensor that contains the confidence scores of the detections.
+            y_true (torch.Tensor): A tensor that contains the true labels of the detections.
+            y_pred (torch.Tensor): A tensor that contains the predicted labels of the detections.    
+        
 
         ***Attention***: True positives are defined here as detections, that have a valid, corresponding bounding box (but not 
         necessarily the correct label).
@@ -519,10 +535,10 @@ class EvaluatorMetrics():
         """
         
         tp_criterion = filtered_dict['assigned_gt_inds'] > 0
-        tp = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
+        tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
         score = filtered_dict['confidence']
 
-        return tp, score    
+        return tp_binary, score, filtered_dict['assigned_labels'], filtered_dict['dt_labels']  
 
     def sklearn_average_precision_score(self,
                                         iou_level: Union[float, List[float]], 
@@ -565,9 +581,9 @@ class EvaluatorMetrics():
                 
                 for cls_idx in class_idx:
                     _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
-                    y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_class_filtered_dict)
-                    if y_pred.nelement() > 0 and y_score.nelement() > 0:
-                        class_dict[self._classes[cls_idx]] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
+                    tp_binary, score, y_true, y_pred  = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_class_filtered_dict)
+                    if tp_binary.nelement() > 0 and score.nelement() > 0:
+                        class_dict[self._classes[cls_idx]] = round(sk_metrics.average_precision_score(y_true=tp_binary, y_score=score), 3)
                     else:
                         class_dict[self._classes[cls_idx]] = 0.0
             
@@ -594,15 +610,45 @@ class EvaluatorMetrics():
 
             class_dict = dict()
             for class_accuracy_requirement in class_accuracy_requirements:
-                y_pred, y_score = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-                if y_pred.nelement() > 0 and y_score.nelement() > 0:
-                    class_dict[class_accuracy_requirement] = round(sk_metrics.average_precision_score(y_true=y_pred, y_score=y_score), 3)
+                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+
+                if tp_binary.nelement() > 0 and score.nelement() > 0:
+                    class_dict[class_accuracy_requirement] = round(sk_metrics.average_precision_score(y_true=tp_binary, y_score=score), 3)
                 else:
                     class_dict[class_accuracy_requirement] = 0.0                
             level_dict[level] = class_dict
 
         return level_dict
+    
+    def sklearn_f1_score(self,
+                        iou_level: Union[float, List[float]],
+                        class_accuracy_requirements: Union[str, List[str]] = 'easy'):
+        
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
 
+        if isinstance(class_accuracy_requirements, str):
+            class_accuracy_requirements = [class_accuracy_requirements]
+
+        level_dict = dict()
+        for level in iou_level:
+            if not level in self.threshold_specific_results_dict.keys():
+                self.val_batch_evaluation(level)
+
+            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+
+            class_dict = dict()
+            for class_accuracy_requirement in class_accuracy_requirements:
+                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+                
+                if tp_binary.nelement() > 0 and score.nelement() > 0:
+                    class_dict[class_accuracy_requirement] = round(sk_metrics.f1_score(y_true=y_true, y_pred=y_pred, average='micro'), 3)
+                else:
+                    class_dict[class_accuracy_requirement] = 0.0
+
+            level_dict[level] = class_dict
+
+        return level_dict
     
     def mean_average_precision_score(self,
                                     iou_level: Union[float, List[float]],
@@ -633,8 +679,11 @@ class EvaluatorMetrics():
                 self.val_batch_evaluation(level)
             _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
 
-            y_pred, y_score = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
-            _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+            tp_binary, score, y_true, y_pred = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
+            _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
+
+            print("Debug: Precision: ", _precision)
+            print("Debug: Recall: ", _recall)
 
             map_level_dict[level] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
 
@@ -684,13 +733,13 @@ class EvaluatorMetrics():
             # level_dict[level] = class_dict
 
             class_dict = dict()
-            y_pred, y_score = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
-            precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
+            tp_binary, score, y_true, y_pred  = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
+            precision, recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
             class_dict['all_classes'] = {
                 'precision': precision,
                 'recall': recall,
-                'y_true': y_pred,
-                'y_probas': y_score,
+                'y_true': tp_binary,
+                'y_probas': score,
                 'labels': self._classes
             }
 
@@ -752,13 +801,13 @@ class EvaluatorMetrics():
 
             class_dict = dict()
 
-            y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
-            fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
+            tp_binary, score, y_true, y_pred  = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
+            fpr, tpr, _ = sk_metrics.roc_curve(y_true=tp_binary, y_score=score)
             class_dict['all_classes'] = {
                 'fpr': fpr,
                 'tpr': tpr,
-                'y_true': y_pred,
-                'y_probas': y_score,
+                'y_true': tp_binary,
+                'y_probas': score,
                 'labels': self._classes
             }
 
@@ -837,28 +886,28 @@ class EvaluatorMetrics():
         mpre = np.concatenate(([0.0], precision, [0.0]))
 
         # # compute the precision envelope
-        # for i in range(mpre.size - 1, 0, -1):
-        #     mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+        for i in range(mpre.size - 1, 0, -1):
+            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
 
-        # # to calculate area under PR curve, look for points
-        # # where X axis (recall) changes value
-        # i = np.where(mrec[1:] != mrec[:-1])[0]
+        # to calculate area under PR curve, look for points
+        # where X axis (recall) changes value
+        i = np.where(mrec[1:] != mrec[:-1])[0]
 
-        # # and sum (\Delta recall) * prec
-        # ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+        # and sum (\Delta recall) * prec
+        ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
         
-        ap_n = 0.
+        # ap_n = 0.
 
-        if not isinstance(n, float):
-            n = float(n)
+        # if not isinstance(n, float):
+        #     n = float(n)
 
-        up_n = n/10.
+        # up_n = n/10.
 
-        for t in np.arange(0., up_n, 0.1):
-            if np.sum(recall >= t) == 0:
-                p = 0
-            else:
-                p = np.max(precision[recall >= t])
-            ap_n = ap_n + p / n
+        # for t in np.arange(0., up_n, 0.1):
+        #     if np.sum(recall >= t) == 0:
+        #         p = 0
+        #     else:
+        #         p = np.max(precision[recall >= t])
+        #     ap_n = ap_n + p / n
             
-        return ap_n
+        return ap_all
