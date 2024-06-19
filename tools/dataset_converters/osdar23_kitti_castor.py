@@ -36,7 +36,8 @@ class OSDaR23_2_KITTI_Converter(object):
                  save_cam_instances=True,
                  info_prefix='osdar23',
                  max_sweeps=10,
-                 sensor_idcs=[0],
+                 sensor_idcs=[0, 1, 2, 3, 4, 5, 6],
+                #  sensor_idcs=[0],
                  split='train'):
         
         """
@@ -101,8 +102,8 @@ class OSDaR23_2_KITTI_Converter(object):
         self.max_sweeps = max_sweeps
         self.sensor_idcs = sensor_idcs
 
-        self.train_partition = 0.8
-        self.val_partition = 0.2
+        self.train_partition = 0.80
+        self.val_partition = 0.20
 
         # self.camera_sensor_list = ['rgb_center', 'rgb_left', 'rgb_right']
         self.lidar_sensor_list = ['lidar']
@@ -131,14 +132,14 @@ class OSDaR23_2_KITTI_Converter(object):
         
         # Mapping of the OSDAR classes into the classes we want to consider
         # Hint: Transition and switch are not considered since they are not 3D bounding box labeled in the LiDAR data
-        # self.class_names = {
-        #     'pedestrian': ['person', 'crowd'],
-        #     'car': ['road_vehicle'],
-        #     'train': ['train', 'wagons'],
-        #     'bike': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-        #     'unknown': ['animal', 'group_of_animals'],
-        #     'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
-        # }
+        self.class_names = {
+            'pedestrian': ['person', 'crowd'],
+            'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+            'car': ['road_vehicle'],
+            'train': ['train', 'wagons'],
+            'unknown': ['animal', 'group_of_animals'],
+            # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
+        }
 
         # self.class_names = {
         #     'pedestrian': ['person', 'crowd'],
@@ -149,15 +150,15 @@ class OSDaR23_2_KITTI_Converter(object):
         #     # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
         # }
         
-        self.class_names = {
-            'pedestrian': ['person', 'crowd'],
-            # 'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            'car': ['road_vehicle'],
-            # 'train': ['train', 'wagons'],
-            # 'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            # 'unknown': ['animal', 'group_of_animals'],
-            # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
-        }
+        # self.class_names = {
+        #     'pedestrian': ['person', 'crowd'],
+        #     'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+        #     'car': ['road_vehicle'],
+        #     # 'train': ['train', 'wagons'],
+        #     # 'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+        #     # 'unknown': ['animal', 'group_of_animals'],
+        #     # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
+        # }
 
         self.ensure_mapping_consistency(self.OSDAR23_CLASSES, self.class_names)
 

@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from collections import defaultdict
 
+
 def remove_duplicates(labels, overlap, neg_case = 0):
     """Remove duplicate labels by keeping the one with the highest overlap score.
 
@@ -139,6 +140,12 @@ class Max3DIoUAssigner(MaxIoUAssigner):
 
         # Assert that everywhere where _gt_inds is 0, _labels is -1
         if not np.all(_labels[_gt_inds == 0] == -1):
+            print("Debug: _gt_inds", _gt_inds)
+            print("Debug: _labels", _labels)
+            raise ValueError("gt_inds and labels are not consistent")
+        
+        # Assert that everywhere where _gt_inds is not 0, _labels is not -1
+        if not np.all(_labels[_gt_inds != 0] != -1):
             print("Debug: _gt_inds", _gt_inds)
             print("Debug: _labels", _labels)
             raise ValueError("gt_inds and labels are not consistent")

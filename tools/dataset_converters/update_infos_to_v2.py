@@ -539,18 +539,17 @@ def update_osdar23_infos(pkl_path, out_dir):
 
     # TODO: This should really not be hardcoded in here!!!
 
-    # METAINFO = {
-    #     'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
-    # }
-    
+    METAINFO = {
+        'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
+    }
     
     # METAINFO = {
     #     'classes': ('pedestrian', 'cyclist', 'car'),
     # }
     
-    METAINFO = {
-        'classes': ('pedestrian', 'car'),
-    }
+    # METAINFO = {
+    #     'classes': ('pedestrian', 'car'),
+    # }
 
     assert METAINFO['classes'] == OSDaR23Dataset.METAINFO['classes'], 'The classes definded in \
         the update_infos_to_v2.py script do not match the classes defined in the osdar23_dataset.py script.'
