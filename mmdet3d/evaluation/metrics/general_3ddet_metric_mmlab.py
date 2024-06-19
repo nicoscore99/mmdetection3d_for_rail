@@ -13,6 +13,7 @@ import pprint
 import bbox
 import torch
 import pandas as pd
+
 import mmengine
 import numpy as np
 import copy
@@ -206,9 +207,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
         evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                             class_accuracy_requirements=['easy', 'hard'])
-        # evaluation_results_dict['mAP'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
-        #                                                                             class_accuracy_requirements='hard')
+                                                                                             class_accuracy_requirements=['easy'])
+
+        evaluation_results_dict['mAP'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
+                                                                                    class_accuracy_requirements='hard')
 
         evaluation_results_dict['F1'] = self.evaluator.sklearn_f1_score(iou_level=self.difficulty_levels,
                                                                         class_accuracy_requirements=['easy', 'hard'])
