@@ -57,9 +57,14 @@ class OSDaR23Dataset(Det3DDataset):
     #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
     # }
 
+    # METAINFO = {
+    #     'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
+    #     'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80)]
+    # }
+    
     METAINFO = {
         'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
-        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192), (197, 226, 255), (0, 60, 100)]
+        'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80), (43, 64, 214)]
     }
 
     def __init__(self,
@@ -72,7 +77,7 @@ class OSDaR23Dataset(Det3DDataset):
                  box_type_3d: str = 'LiDAR',
                  filter_empty_gt: bool = True,
                  test_mode: bool = False,
-                 pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 0.0],
+                 pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 1],
                  **kwargs) -> None:
         
         assert len(OSDaR23Dataset.METAINFO['classes']) == len(OSDaR23Dataset.METAINFO['palette'])
@@ -177,6 +182,7 @@ class OSDaR23Dataset(Det3DDataset):
         #     ann_info['gt_bboxes_3d']).convert_to(self.box_mode_3d,
         #                                          np.linalg.inv(lidar2cam))
         
+        # TODO: Needs investigation
         gt_bboxes_3d = LiDARInstance3DBoxes(
             ann_info['gt_bboxes_3d'])
 

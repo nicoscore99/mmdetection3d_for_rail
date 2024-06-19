@@ -65,7 +65,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  ann_file: str,
                  metric: str = 'det3d',
                  pcd_limit_range: List[float] = [0, -39.68, -20, 69.12, 39.68, 20],
-                 force_single_assignement: bool = True,
+                #  pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 1],
+                 force_single_assignement: bool = False,
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
                  default_cam_key: str = 'CAM2',
@@ -73,9 +74,13 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  submission_prefix: Optional[str] = None,
                  collect_device: str = 'cpu',
                  save_graphics: Optional[bool] = False,
+                 save_evaluation_results: Optional[bool] = False,
+                 difficulty_levels: Optional[List[float]] = [0.1, 0.3, 0.5, 0.7, 0.9],
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
+                 evaluation_file_name: Optional[str] = 'evaluation_results.json',
                  backend_args: Optional[dict] = None) -> None:
+    
         self.default_prefix = 'General 3D Det metric mmlab'
         super(General_3dDet_Metric_MMLab, self).__init__(collect_device=collect_device, prefix=prefix)
         self.pcd_limit_range = pcd_limit_range
@@ -89,6 +94,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         self.output_dir = output_dir
         self.save_graphics = save_graphics
         self.force_single_assignement = force_single_assignement
+        self.save_evaluation_results = save_evaluation_results
+        self.evaluation_file_name = evaluation_file_name
+        self.difficulty_levels = difficulty_levels
+        self.metric = metric
 
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
@@ -98,19 +107,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         # '3d' and 'bev' stand for '3-dimensional object detction metrics' and 'bird's eye view object detection metrics'
         allowed_metrics = ['det3d', 'bev']
-        # self.metrics = metric if isinstance(metric, list) else [metric]
-        # For now, metric should just be one. Don't select both.
-        self.metric = metric
-
-        self.difficulty_levels = [0.1, 0.3, 0.5, 0.7, 0.9]
-        
+       
         # Check that difficulty levels are not empty
         if not self.difficulty_levels:
             raise ValueError('difficulty_levels should not be empty.')
-
-        # for metric in self.metrics:
-        #     if metric not in allowed_metrics:
-        #         raise KeyError("metric should be one of {allowed_metrics} but got {metric}.")
 
         if self.metric not in allowed_metrics:
             raise KeyError("metric should be one of {allowed_metrics} but got {metric}.")
@@ -158,18 +158,12 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             'scores_3d': tensor([0.1432, 0.1336, 0.2081, 0.1142, 0.1091, 0.1007])
         }
         """
-
-        # self.classes = self.dataset_meta['classes']
-
-        # load annotations
-        ann_file = load(self.ann_file, backend_args=self.backend_args)
-        # gt_annos = self.convert_from_ann_file(ann_file)
+             
         gt_annos = self.convert_gt_from_results(results)
         dt_annos = self.convert_dt_from_results(results)
-
+        
         # print("Debug: gt_annos: ", gt_annos)
         # print("Debug: dt_annos: ", dt_annos)
-
         # Assert that the keys of the gt_annos and dt_annos are the same
         assert gt_annos.keys() == dt_annos.keys(), "The keys of the gt_annos and dt_annos are not the same."
 
@@ -178,18 +172,15 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         dt_annos_valid, perc = self.filter_valid_dt_annos(dt_annos)
         print("Percentage of valid bounding boxes for detections: ", perc)
-
+        
         # Assert that the keys of the gt_annos_valid and dt_annos_valid are the same
         if not gt_annos_valid.keys() == dt_annos_valid.keys():
-
-            # print the keys that are not in both lists
             print("Keys that are not in both lists: ", set(gt_annos_valid.keys()) ^ set(dt_annos_valid.keys()))
-
             raise ValueError("The keys of the gt_annos_valid and dt_annos_valid are not the same.")
 
         evaluation_results_dict = dict() # Contains all evaluation results
         curves_dict = dict() # Contains all curves
-
+        
         self.evaluator = EvaluatorMetrics(gt_annos_valid=gt_annos_valid, 
                                           dt_annos_valid=dt_annos_valid, 
                                           classes=self.classes, 
@@ -197,7 +188,6 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                                           force_single_assignement=self.force_single_assignement)
 
         # Only perform the evaluation when there is at least 10 gt instances and 10 dt instances
-        
         if not self.evaluator.total_gt_instances >= 10:
             print_log("The number of gt instances is less than 10, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
@@ -207,10 +197,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
         evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                             class_accuracy_requirements=['easy'])
-
-        evaluation_results_dict['mAP'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements='hard')
+                                                                                             class_accuracy_requirements=['easy', 'hard'])
+        
+        evaluation_results_dict['mAP40'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
+                                                                                       class_accuracy_requirements=['easy', 'hard'])
 
         evaluation_results_dict['F1'] = self.evaluator.sklearn_f1_score(iou_level=self.difficulty_levels,
                                                                         class_accuracy_requirements=['easy', 'hard'])
@@ -220,21 +210,20 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                                                                                        class_accuracy_requirements=['easy', 'hard'],
                                                                                        class_idx=range(len(self.classes)))
 
-        level_lower_bound = self.difficulty_levels[0]
-
-        curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=level_lower_bound)
-        curves_dict['roc'] = self.evaluator.roc_curve(iou_level=level_lower_bound)
-        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=level_lower_bound)
+        curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=0.5)
+        curves_dict['roc'] = self.evaluator.roc_curve(iou_level=0.5)
+        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)
 
         if self.save_graphics:
-            self.save_plot(plot=self.evaluator.precision_recall_plot(iou_level=0.5), filename = 'precision_recall_plot.png')
-            self.save_plot(plot=self.evaluator.roc_plot(iou_level=0.5), filename = 'roc_plot.png')
-            self.save_plot(plot=self.evaluator.confusion_matrix_plot(iou_level=0.5), filename = 'confusion_matrix_plot.png')
+            self.save_plot(plot=self.evaluator.precision_recall_plot(iou_level=0.5), filename = 'precision_recall_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.roc_plot(iou_level=0.5), filename = 'roc_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.confusion_matrix_plot(iou_level=0.5), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
 
         # Save the evaluation results to a .json file
-        save_path = 'evaluation_kitti_on_kitti_pointpillars_3class_fsa.json'
-        with open(save_path, 'w') as f:
-            json.dump(evaluation_results_dict, f, indent=4)
+        if self.save_evaluation_results:
+            save_path = os.join(self.output_dir, self.evaluation_file_name)
+            with open(save_path, 'w') as f:
+                json.dump(evaluation_results_dict, f, indent=4)
             
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
@@ -243,16 +232,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         gt_dict = dict()
         for data_sample in results:
 
-            # print("Debug: data_sample: ", data_sample)
-
-            # raise ValueError("Debug: Stop here")
             sample_idx = data_sample['lidar_path']
             gt_bboxes = InstanceData()
-            # gt_instances = data_sample['instances']
-            # for instance in gt_instances:
-            #     gt_bboxes.bboxes_3d.append(instance['bbox_3d'])
-            #     gt_bboxes.labels_3d.append(instance['bbox_label_3d'])
-
             # If 'gt_labels_3d' is not a tensor, convert it to a tensor
             if not isinstance(data_sample['eval_ann_info']['gt_labels_3d'], torch.Tensor):
                 data_sample['eval_ann_info']['gt_labels_3d'] = torch.from_numpy(data_sample['eval_ann_info']['gt_labels_3d'])
@@ -310,14 +291,14 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         num_bbox_before = sum([len(annos[key].bboxes_3d) for key in annos.keys()])
         num_bbox_after = sum([len(annos_valid[key].bboxes_3d) for key in annos_valid.keys()])
+        print("Number of ground thruth bounding boxes after filtering: ", num_bbox_after)
+        
         # Devision by zero check
         if num_bbox_before == 0:
             percentage = 0.0
         else:
-            percentage = round((num_bbox_after / num_bbox_before) * 100, 2)
-            
+            percentage = round((num_bbox_after / num_bbox_before) * 100, 2)            
         return annos_valid, percentage
-    
         
     def convert_dt_from_results(self, results: List[dict]) -> dict:
         
@@ -514,7 +495,6 @@ class EvaluatorMetrics():
         tp_criterion = filtered_dict['dt_labels'] == filtered_dict['assigned_labels']
         tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
         score = filtered_dict['confidence']
-
         return tp_binary, score, filtered_dict['assigned_labels'], filtered_dict['dt_labels']
 
     def tp_detection(self,
@@ -539,7 +519,6 @@ class EvaluatorMetrics():
         tp_criterion = filtered_dict['assigned_gt_inds'] > 0
         tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
         score = filtered_dict['confidence']
-
         return tp_binary, score, filtered_dict['assigned_labels'], filtered_dict['dt_labels']  
 
     def sklearn_average_precision_score(self,
@@ -674,20 +653,20 @@ class EvaluatorMetrics():
             class_accuracy_requirements = [class_accuracy_requirements]
 
         map_level_dict = dict()
-
         for level in iou_level:
 
-            if not level in self.threshold_specific_results_dict.keys():
-                self.val_batch_evaluation(level)
-            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+            class_dict = dict()
+            for class_accuracy_requirement in class_accuracy_requirements:
+                if not level in self.threshold_specific_results_dict.keys():
+                    self.val_batch_evaluation(level)
+                _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+                
+                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+                _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
+                
+                class_dict[class_accuracy_requirement] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
 
-            tp_binary, score, y_true, y_pred = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
-            _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
-
-            print("Debug: Precision: ", _precision)
-            print("Debug: Recall: ", _recall)
-
-            map_level_dict[level] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
+            map_level_dict[level] = class_dict
 
         return map_level_dict
     
@@ -706,33 +685,6 @@ class EvaluatorMetrics():
             if not level in self.threshold_specific_results_dict.keys():
                 self.val_batch_evaluation(level)
             _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            # class_dict = dict()
-            # if class_idx:
-            #     for cls_idx in class_idx:
-            #         _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
-            #         y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
-            #         precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
-
-            #         class_dict[self._classes[cls_idx]] = {
-            #             'precision': precision,
-            #             'recall': recall,
-            #             'y_true': y_pred,
-            #             'y_probas': y_score,
-            #             'labels': self._classes
-            #         }
-            # else:
-            #     y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
-            #     precision, recall, _ = sk_metrics.precision_recall_curve(y_true=y_pred, probas_pred=y_score)
-            #     class_dict['all_classes'] = {
-            #         'precision': precision,
-            #         'recall': recall,
-            #         'y_true': y_pred,
-            #         'y_probas': y_score,
-            #         'labels': self._classes
-            #     }
-        
-            # level_dict[level] = class_dict
 
             class_dict = dict()
             tp_binary, score, y_true, y_pred  = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
@@ -772,34 +724,6 @@ class EvaluatorMetrics():
             if not level in self.threshold_specific_results_dict.keys():
                 self.val_batch_evaluation(level)
             _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            # class_dict = dict()
-            # if class_idx:
-            #     for cls_idx in class_idx:
-            #         _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
-            #         y_pred, y_score = self.tp_detection(filtered_dict=_class_filtered_dict)
-            #         fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
-            #         class_dict[self._classes[cls_idx]] = {
-            #             'fpr': fpr,
-            #             'tpr': tpr,
-            #             'y_true': y_pred,
-            #             'y_probas': y_score,
-            #             'labels': self._classes
-            #         }
-
-            #     level_dict[level] = class_dict
-            # else:
-            #     y_pred, y_score = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
-            #     fpr, tpr, _ = sk_metrics.roc_curve(y_true=y_pred, y_score=y_score)
-            #     class_dict['all_classes'] = {
-            #         'fpr': fpr,
-            #         'tpr': tpr,
-            #         'y_true': y_pred,
-            #         'y_probas': y_score,
-            #         'labels': self._classes
-            #     }
-        
-            #     level_dict[level] = class_dict
 
             class_dict = dict()
 
@@ -873,9 +797,7 @@ class EvaluatorMetrics():
     
     def compute_ap(self,
                    recall, precision, n=40):
-        """ Compute the average precision, given the recall and precision curves.
-        Code originally from https://github.com/rbgirshick/py-faster-rcnn.
-
+        """
         # Arguments
             recall:    The recall curve (list).
             precision: The precision curve (list).
@@ -887,29 +809,87 @@ class EvaluatorMetrics():
         mrec = np.concatenate(([0.0], recall, [1.0]))
         mpre = np.concatenate(([0.0], precision, [0.0]))
 
-        # # compute the precision envelope
-        for i in range(mpre.size - 1, 0, -1):
-            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+        # # # compute the precision envelope
+        # for i in range(mpre.size - 1, 0, -1):
+        #     mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
 
-        # to calculate area under PR curve, look for points
-        # where X axis (recall) changes value
-        i = np.where(mrec[1:] != mrec[:-1])[0]
+        # # to calculate area under PR curve, look for points
+        # # where X axis (recall) changes value
+        # i = np.where(mrec[1:] != mrec[:-1])[0]
 
-        # and sum (\Delta recall) * prec
-        ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+        # # and sum (\Delta recall) * prec
+        # ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
         
-        # ap_n = 0.
+        ap_n = 0.
 
-        # if not isinstance(n, float):
-        #     n = float(n)
+        if not isinstance(n, float):
+            n = float(n)
 
-        # up_n = n/10.
+        up_n = n/10.
 
-        # for t in np.arange(0., up_n, 0.1):
-        #     if np.sum(recall >= t) == 0:
-        #         p = 0
-        #     else:
-        #         p = np.max(precision[recall >= t])
-        #     ap_n = ap_n + p / n
+        for t in np.arange(0., up_n, 0.1):
+            if np.sum(recall >= t) == 0:
+                p = 0
+            else:
+                p = np.max(precision[recall >= t])
+            ap_n = ap_n + p / n
             
-        return ap_all
+        return ap_n
+
+def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
+    
+    fig, ax = plt.subplots()
+    
+    # Corners of the bounding box
+    for i in range(gt_3d_bboxes.shape[0]):
+        gt_bbox = gt_3d_bboxes[i]
+        
+        corners = np.array([
+            [-gt_bbox[3]/2, -gt_bbox[4]/2],
+            [gt_bbox[3]/2, -gt_bbox[4]/2],
+            [gt_bbox[3]/2, gt_bbox[4]/2],
+            [-gt_bbox[3]/2, gt_bbox[4]/2]
+        ])
+        
+        theta = np.radians(gt_bbox[6])
+        R = np.array([
+            [np.cos(theta), -np.sin(theta)],
+            [np.sin(theta), np.cos(theta)]
+        ])
+        
+        rotated_corners = corners.dot(R)
+        
+        # translated_corners = rotated_corners + np.tile(gt_bbox[:2].cpu().numpy(), (4, 1))
+        translated_corners = np.add(rotated_corners, gt_bbox[:2].cpu().numpy())
+        
+        square = plt.Polygon(translated_corners, fill=None, edgecolor='green',  linestyle='--', closed=True)
+        ax.add_patch(square)
+        
+    for i in range(dt_3d_bboxes.shape[0]):
+        dt_bbox = dt_3d_bboxes[i]
+        
+        corners = np.array([
+            [-dt_bbox[3]/2, -dt_bbox[4]/2],
+            [dt_bbox[3]/2, -dt_bbox[4]/2],
+            [dt_bbox[3]/2, dt_bbox[4]/2],
+            [-dt_bbox[3]/2, dt_bbox[4]/2]
+        ])
+        
+        theta = np.radians(dt_bbox[6])
+        R = np.array([
+            [np.cos(theta), -np.sin(theta)],
+            [np.sin(theta), np.cos(theta)]
+        ])
+        
+        rotated_corners = corners.dot(R)
+        translated_corners = np.add(rotated_corners, dt_bbox[:2].cpu().numpy())
+        
+        square = plt.Polygon(translated_corners, fill=None, edgecolor='red', linestyle='--', closed=True)
+        ax.add_patch(square)
+        
+    # set x and y axis limits to -50 and 50
+    ax.set_xlim(0, 50)
+    ax.set_ylim(-25, 25)
+        
+    # save the plot to the save directory
+    plt.show(block=True)
