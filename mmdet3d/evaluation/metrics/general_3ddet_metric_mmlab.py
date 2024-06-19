@@ -204,7 +204,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         evaluation_results_dict['F1'] = self.evaluator.sklearn_f1_score(iou_level=self.difficulty_levels,
                                                                         class_accuracy_requirements=['easy', 'hard'])
+        
 
+        evaluation_results_dict['precision'] = self.evaluator.compute_precision(iou_level=self.difficulty_levels,
+                                                                                class_accuracy_requirements=['easy', 'hard'])
 
         evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
                                                                                        class_accuracy_requirements=['easy', 'hard'],
@@ -835,6 +838,60 @@ class EvaluatorMetrics():
             ap_n = ap_n + p / n
             
         return ap_n
+    
+    def precision(self, _tp_binary: torch.Tensor) -> float:
+
+        tp = _tp_binary.sum().item()
+
+        if len(_tp_binary) == 0:
+            print("Warning: Calculating precision with an empty tensor. Set to 0.0 to prevent by zero division.")
+            return 0.0
+        
+        precision = tp / len(_tp_binary) 
+        return precision
+    
+    def compute_precision(self,
+                            iou_level: Union[float, List[float]],
+                        class_accuracy_requirements: Union[str, List[str]] = 'easy'):
+        """ 
+            This function computes the average precision score with the traditional method without using sklearn.
+
+            Args:
+                iou_level (Union[float, List[float]]): The IoU levels to be evaluated.
+                class_accuracy_requirements (Union[str, List[str]]): The class accuracy requirements to be evaluated. Defaults to 'easy'.
+
+            Returns:
+                Dict: A dictionary that contains the mean average precision scores for the different IoU levels and class accuracy requirements.
+
+        """
+        
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
+
+        if isinstance(class_accuracy_requirements, str):
+            class_accuracy_requirements = [class_accuracy_requirements]
+
+        map_level_dict = dict()
+        for level in iou_level:
+
+            class_dict = dict()
+            for class_accuracy_requirement in class_accuracy_requirements:
+                if not level in self.threshold_specific_results_dict.keys():
+                    self.val_batch_evaluation(level)
+
+                _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+                
+                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+                
+                precision = self.precision(tp_binary)
+
+                class_dict[class_accuracy_requirement] = round(precision, 3)
+
+            map_level_dict[level] = class_dict
+
+        return map_level_dict
+    
+
 
 def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
     
