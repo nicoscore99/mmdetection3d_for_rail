@@ -783,7 +783,7 @@ class Det3DLocalVisualizer(DetLocalVisualizer):
              win_name: str = 'image',
              wait_time: int = -1,
              continue_key: str = 'right',
-             vis_task: str = 'lidar_det') -> None:
+             vis_task: str = 'multi-modality_det') -> None:
         """Show the drawn point cloud/image.
 
         Args:
