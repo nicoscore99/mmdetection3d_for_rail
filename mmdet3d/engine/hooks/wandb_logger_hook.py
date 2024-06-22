@@ -149,6 +149,10 @@ class WandbLoggerHook(LoggerHook):
 
             for key, value in outputs.items():
                 self._wandb.log({key: value, 'train_iter': runner.iter}, commit=self._commit)
+                
+        lr_dict = runner.optim_wrapper.get_lr()
+        if lr_dict is not None:
+            self._wandb.log({'lr': lr_dict['lr'][0], 'train_iter': runner.iter}, commit=self._commit)
             
     def after_train_epoch(self,
                           runner: Runner,
