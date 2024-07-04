@@ -23,6 +23,7 @@ from mmengine.logging import MMLogger, print_log
 from mmdet3d.registry import METRICS
 from mmdet3d.structures.bbox_3d import LiDARInstance3DBoxes
 from mmdet3d.models.task_modules.assigners.max_3d_iou_assigner import Max3DIoUAssigner
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mmengine.structures import InstanceData
 
 from mmdet3d.structures import (Box3DMode, CameraInstance3DBoxes,
@@ -75,7 +76,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  collect_device: str = 'cpu',
                  save_graphics: Optional[bool] = False,
                  save_evaluation_results: Optional[bool] = False,
-                 difficulty_levels: Optional[List[float]] = [0.1, 0.3, 0.5, 0.7, 0.9],
+                 difficulty_levels: Optional[List[float]] = [0.01],
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  evaluation_file_name: Optional[str] = 'evaluation_results.json',
@@ -434,9 +435,17 @@ class EvaluatorMetrics():
         dt_scores = []
         assigned_gt_inds = []
         assigned_max_overlaps = []
-        assigned_labels = []
+        assigned_labels = []     
+        
+        # # select 10 random keys
+        # keys = list(self._gt_annos_valid.keys())
+        # random_choice = np.random.choice(keys, 50) 
+        
+        # # set random choice to last 10 keys
+        # random_choice = keys[-10:]
         
         for i, key in enumerate(self._gt_annos_valid.keys()):
+            
             gt_instance = self._gt_annos_valid[key]
             dt_instance = self._dt_annos_valid[key]
             assign_result = iou_assigner.assign(pred_instances=dt_instance, gt_instances=gt_instance, force_single_assignement=self.force_single_assignement)
@@ -447,6 +456,13 @@ class EvaluatorMetrics():
             assigned_gt_inds.append(assign_result.gt_inds)
             assigned_max_overlaps.append(assign_result.max_overlaps)
             assigned_labels.append(assign_result.labels)
+            
+            # # # Print the bev boxes
+            # if key in random_choice:
+            #     draw_bev_projection(key=key,
+            #             gt_3d_bboxes=self._gt_annos_valid[key].bboxes_3d,
+            #             dt_3d_bboxes=self._dt_annos_valid[key].bboxes_3d)
+        
 
         # assert that all out the lists have the same length
         assert len(dt_labels) == len(dt_scores) == len(assigned_gt_inds) == len(assigned_max_overlaps) == len(assigned_labels)
@@ -458,7 +474,7 @@ class EvaluatorMetrics():
             'assigned_max_overlaps': torch.cat(assigned_max_overlaps),
             'assigned_labels': torch.cat(assigned_labels)
         }
-
+                            
         self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
 
 
@@ -890,63 +906,185 @@ class EvaluatorMetrics():
             map_level_dict[level] = class_dict
 
         return map_level_dict
+            
+    def is_of_type_kitti(self, _lidar_path: 'str') -> bool:
+        """
+        Example of _lidar_path:
+        'data/kitti_osdar23_merge/points/000000.bin'
+        """
+        # Extract the file name
+        file_name = _lidar_path.split('/')[-1][:-4]
+        # Check if the file name is a number
+        return file_name.isnumeric()   
     
-
+####### Helper functions #######
 
 def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
     
-    fig, ax = plt.subplots()
+    # Format of the boundingboxes
     
-    # Corners of the bounding box
+    print("gt_3d_bboxes: ", gt_3d_bboxes)
+    print("dt_3d_bboxes: ", dt_3d_bboxes)
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Three horizontally aligned plots
+    # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    # ax1, ax2, ax3 = axs
+    
+    # # Birds eye view on ax1
+    # for i in range(gt_3d_bboxes.shape[0]):
+    #     gt_bbox = gt_3d_bboxes[i]
+    #     corners = np.array([
+    #         [-gt_bbox[3]/2, -gt_bbox[4]/2],
+    #         [gt_bbox[3]/2, -gt_bbox[4]/2],
+    #         [gt_bbox[3]/2, gt_bbox[4]/2],
+    #         [-gt_bbox[3]/2, gt_bbox[4]/2]
+    #     ])
+        
+    #     theta = np.radians(gt_bbox[6])
+    #     R = np.array([
+    #         [np.cos(theta), -np.sin(theta)],
+    #         [np.sin(theta), np.cos(theta)]
+    #     ])
+        
+    #     rotated_corners = corners.dot(R)
+    #     translated_corners = np.add(rotated_corners, gt_bbox[:2].cpu().numpy())
+        
+    #     square = plt.Polygon(translated_corners, fill=None, edgecolor='green',  linestyle='--', closed=True)
+    #     ax1.add_patch(square)
+        
+        
+    # for i in range(dt_3d_bboxes.shape[0]):
+    #     gt_bbox = dt_3d_bboxes[i]
+    #     corners = np.array([
+    #         [-gt_bbox[3]/2, -gt_bbox[4]/2],
+    #         [gt_bbox[3]/2, -gt_bbox[4]/2],
+    #         [gt_bbox[3]/2, gt_bbox[4]/2],
+    #         [-gt_bbox[3]/2, gt_bbox[4]/2]
+    #     ])
+        
+    #     theta = np.radians(gt_bbox[6])
+    #     R = np.array([
+    #         [np.cos(theta), -np.sin(theta)],
+    #         [np.sin(theta), np.cos(theta)]
+    #     ])
+        
+    #     rotated_corners = corners.dot(R)
+    #     translated_corners = np.add(rotated_corners, gt_bbox[:2].cpu().numpy())
+        
+    #     square = plt.Polygon(translated_corners, fill=None, edgecolor='red', linestyle='--', closed=True)
+    #     ax1.add_patch(square)
+    
+    # Corner points of the 3D bounding box ground truth
     for i in range(gt_3d_bboxes.shape[0]):
-        gt_bbox = gt_3d_bboxes[i]
-        
+        gt_box_3d = gt_3d_bboxes[i]        
         corners = np.array([
-            [-gt_bbox[3]/2, -gt_bbox[4]/2],
-            [gt_bbox[3]/2, -gt_bbox[4]/2],
-            [gt_bbox[3]/2, gt_bbox[4]/2],
-            [-gt_bbox[3]/2, gt_bbox[4]/2]
+            [gt_box_3d[3]/2, gt_box_3d[4]/2, 0], # B1: Bottom front left
+            [gt_box_3d[3]/2, -gt_box_3d[4]/2, 0], # B2: Bottom front right
+            [-gt_box_3d[3]/2, -gt_box_3d[4]/2, 0], # B3: Bottom back right
+            [-gt_box_3d[3]/2, gt_box_3d[4]/2, 0], # B4: Bottom back left
+            [gt_box_3d[3]/2, gt_box_3d[4]/2, gt_box_3d[5]], # T1: Top front left
+            [gt_box_3d[3]/2, -gt_box_3d[4]/2, gt_box_3d[5]], # T2: Top front right
+            [-gt_box_3d[3]/2, -gt_box_3d[4]/2, gt_box_3d[5]], # T3: Top back right
+            [-gt_box_3d[3]/2, gt_box_3d[4]/2, gt_box_3d[5]] # T4: Top back left
         ])
         
-        theta = np.radians(gt_bbox[6])
+        theta = np.radians(gt_box_3d[6])
         R = np.array([
-            [np.cos(theta), -np.sin(theta)],
-            [np.sin(theta), np.cos(theta)]
+            [np.cos(theta), -np.sin(theta), 0],
+            [np.sin(theta), np.cos(theta), 0],
+            [0, 0, 1]
         ])
         
-        rotated_corners = corners.dot(R)
+        rotated_corners = R @ corners.T
+        translated_corners = np.add(rotated_corners.T, gt_box_3d[:3].cpu().numpy())
         
-        # translated_corners = rotated_corners + np.tile(gt_bbox[:2].cpu().numpy(), (4, 1))
-        translated_corners = np.add(rotated_corners, gt_bbox[:2].cpu().numpy())
+        vertices = translated_corners
+        edges = [
+            [vertices[0], vertices[1], vertices[2], vertices[3], vertices[0]],
+            [vertices[4], vertices[5], vertices[6], vertices[7], vertices[4]],
+            [vertices[0], vertices[4]],
+            [vertices[1], vertices[5]],
+            [vertices[2], vertices[6]],
+            [vertices[3], vertices[7]]
+        ]
         
-        square = plt.Polygon(translated_corners, fill=None, edgecolor='green',  linestyle='--', closed=True)
-        ax.add_patch(square)
-        
+        for edge in edges:
+            ax.add_collection3d(Poly3DCollection([edge], facecolors='springgreen', linewidths=1, edgecolors='seagreen', alpha=.25))
+            
     for i in range(dt_3d_bboxes.shape[0]):
-        dt_bbox = dt_3d_bboxes[i]
-        
+        dt_box_3d = dt_3d_bboxes[i]
         corners = np.array([
-            [-dt_bbox[3]/2, -dt_bbox[4]/2],
-            [dt_bbox[3]/2, -dt_bbox[4]/2],
-            [dt_bbox[3]/2, dt_bbox[4]/2],
-            [-dt_bbox[3]/2, dt_bbox[4]/2]
+            [dt_box_3d[3]/2, dt_box_3d[4]/2, 0], # B1: Bottom front left
+            [dt_box_3d[3]/2, -dt_box_3d[4]/2, 0], # B2: Bottom front right
+            [-dt_box_3d[3]/2, -dt_box_3d[4]/2, 0], # B3: Bottom back right
+            [-dt_box_3d[3]/2, dt_box_3d[4]/2, 0], # B4: Bottom back left
+            [dt_box_3d[3]/2, dt_box_3d[4]/2, dt_box_3d[5]], # T1: Top front left
+            [dt_box_3d[3]/2, -dt_box_3d[4]/2, dt_box_3d[5]], # T2: Top front right
+            [-dt_box_3d[3]/2, -dt_box_3d[4]/2, dt_box_3d[5]], # T3: Top back right
+            [-dt_box_3d[3]/2, dt_box_3d[4]/2, dt_box_3d[5]] # T4: Top back left
         ])
         
-        theta = np.radians(dt_bbox[6])
+        theta = np.radians(dt_box_3d[6])
         R = np.array([
-            [np.cos(theta), -np.sin(theta)],
-            [np.sin(theta), np.cos(theta)]
+            [np.cos(theta), -np.sin(theta), 0],
+            [np.sin(theta), np.cos(theta), 0],
+            [0, 0, 1]
         ])
         
-        rotated_corners = corners.dot(R)
-        translated_corners = np.add(rotated_corners, dt_bbox[:2].cpu().numpy())
+        rotated_corners = R @ corners.T
+        translated_corners = np.add(rotated_corners.T, dt_box_3d[:3].cpu().numpy())
+
+        vertices = translated_corners
+        edges = [
+            [vertices[0], vertices[1], vertices[2], vertices[3], vertices[0]],
+            [vertices[4], vertices[5], vertices[6], vertices[7], vertices[4]],
+            [vertices[0], vertices[4]],
+            [vertices[1], vertices[5]],
+            [vertices[2], vertices[6]],
+            [vertices[3], vertices[7]]
+        ]
         
-        square = plt.Polygon(translated_corners, fill=None, edgecolor='red', linestyle='--', closed=True)
-        ax.add_patch(square)
+        for edge in edges:
+            ax.add_collection3d(Poly3DCollection([edge], facecolors='cornflowerblue', linewidths=1, edgecolors='royalblue', alpha=.25))
+    
         
-    # set x and y axis limits to -50 and 50
-    ax.set_xlim(0, 50)
-    ax.set_ylim(-25, 25)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+        
+    # set title for complete figure
+    fig.suptitle('Projections of key: ' + key)
+    
+    x_upper = 80
+    x_lower = 0
+    y_upper = -40
+    y_lower = 40
+    z_upper = 5
+    z_lower = -5
+    
+    if not (gt_3d_bboxes.shape[0] == 0 or dt_3d_bboxes.shape[0] == 0):
+        x_upper = max([gt_3d_bboxes[:, 0].max(), dt_3d_bboxes[:, 0].max()]) + 5
+        x_lower = 0
+        y_upper = max([gt_3d_bboxes[:, 1].max(), dt_3d_bboxes[:, 1].max()]) + 5
+        y_lower = min([gt_3d_bboxes[:, 1].min(), dt_3d_bboxes[:, 1].min()]) - 5
+        z_upper = 5
+        z_lower = -5
+    else:
+        print("No bounding boxes to plot for key: ", key)
+        return
+    
+    # Set the limits for the complete figure
+    ax.set_xlim(x_lower, x_upper)
+    ax.set_ylim(y_lower, y_upper)
+    ax.set_zlim(z_lower, z_upper)
+
+    # Apply the calculated aspect ratio
+    ax.set_aspect('equal')
+    scale = vertices.flatten()
+    ax.auto_scale_xyz(scale, scale, scale)
         
     # save the plot to the save directory
     plt.show(block=True)

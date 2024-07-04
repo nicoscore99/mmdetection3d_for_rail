@@ -9,6 +9,8 @@ from mmengine.utils import ProgressBar, mkdir_or_exist
 from mmdet3d.registry import DATASETS, VISUALIZERS
 from mmdet3d.utils import replace_ceph_backend
 
+import numpy as np
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Browse a dataset')
@@ -118,8 +120,17 @@ def main():
     visualizer.dataset_meta = dataset.metainfo
 
     progress_bar = ProgressBar(len(dataset))
+    
+    # randomize the dataset
+    len_dataset = len(dataset)
+    index_array = np.arange(len_dataset)
+    np.random.shuffle(index_array)
 
-    for i, item in enumerate(dataset):
+    # for i, item in enumerate(dataset):
+    
+    for i in index_array:
+        item = dataset[i]
+        
         # the 3D Boxes in input could be in any of three coordinates
         data_input = item['inputs']
         data_sample = item['data_samples'].numpy()

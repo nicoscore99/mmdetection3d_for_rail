@@ -1,33 +1,24 @@
 # dataset settings
-custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset', 
+custom_imports = dict(imports=['mmdet3d.datasets.kitti_osdar23_merge_dataset', 
                                'mmdet3d.engine.hooks.wandb_logger_hook',
                                'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)
-dataset = dict(type='OSDaR23Dataset')
-dataset_type = 'OSDaR23Dataset'
-data_root = 'data/osdar23_3class/'
-class_names = ['pedestrian', 'cyclist', 'car']
-# According to Robosense M1+ specifications (Range: 200m, Horizontal FOV: 120°)
+dataset = dict(type='KittiOSDaR23Merge')
+dataset_type = 'KittiOSDaR23Merge'
+data_root = 'data/kitti_osdar23_merge/'
+class_names = ['Pedestrian', 'Cyclist', 'Car']
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
-
-# Example to use different file client
-# Method 1: simply set the data root and let the file I/O module
-# automatically infer from prefix (not support LMDB and Memcache yet)
-
-# This thing is for reading and writing data from/to S3
-# data_root = 's3://openmmlab/datasets/detection3d/kitti/'
-
 
 backend_args = None
 
 db_sampler = dict(
     data_root=data_root,
-    info_path=data_root + 'kitti_dbinfos_train.pkl',
+    info_path=data_root + 'merged_infos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_min_points=dict(pedestrian=5, cyclist=5, car=5),
+        filter_by_min_points=dict(Pedestrian=5, Cyclist=5, Car=5),
     classes=class_names,
-    sample_groups=dict(pedestrian=5, cyclist=5, car=5),
+    sample_groups=dict(Pedestrian=5, Cyclist=5, Car=5),
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
@@ -84,8 +75,8 @@ train_dataloader = dict(
         dataset=dict(
             type=dataset_type,
             data_root=data_root,
-            ann_file='kitti_infos_train.pkl',
-            data_prefix=dict(pts='points'),
+            ann_file='merged_infos_train.pkl',
+            data_prefix=dict(pts='training/points'),
             pipeline=train_pipeline,
             modality=input_modality,
             test_mode=False,
@@ -103,8 +94,8 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        data_prefix=dict(pts='points'),
-        ann_file='kitti_infos_val.pkl',
+        data_prefix=dict(pts='testing/points'),
+        ann_file='merged_infos_val.pkl',
         pipeline=eval_pipeline,
         modality=input_modality,
         test_mode=True,
@@ -112,7 +103,7 @@ val_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 test_dataloader = dict(
-    batch_size=6,
+    batch_size=2,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,
@@ -120,8 +111,8 @@ test_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        data_prefix=dict(pts='points'),
-        ann_file='kitti_infos_val.pkl',
+        data_prefix=dict(pts='testing/points'),
+        ann_file='merged_infos_val.pkl',
         pipeline=test_pipeline,
         modality=input_modality,
         test_mode=True,
@@ -130,10 +121,10 @@ test_dataloader = dict(
         backend_args=backend_args))
 val_evaluator = dict(
     type='General_3dDet_Metric_MMLab',
-    ann_file=data_root + 'kitti_infos_val.pkl',
+    ann_file=data_root + 'merged_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23_3class/training/rtx4090_pvrcnn_run1_3class/',
+    # output_dir='data/osdar23_3class/training/rtx4090_pvrcnn_run1_3class/',
     pcd_limit_range=[0, -39.68, -10, 69.12, 39.68, 10],
     save_graphics=True,
     backend_args=backend_args)
