@@ -52,20 +52,20 @@ class OSDaR23Dataset(Det3DDataset):
             Defaults to [0, -40, -3, 70.4, 40, 0.0].
     """
     # TODO: use full classes of kitti
-    # METAINFO = {
-    #     'classes': ('pedestrian', 'cyclist', 'car'),
-    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
-    # }
+    METAINFO = {
+        'classes': ('pedestrian', 'cyclist', 'car'),
+        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
+    }
 
     # METAINFO = {
     #     'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
     #     'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80)]
     # }
     
-    METAINFO = {
-        'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
-        'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80), (43, 64, 214)]
-    }
+    # METAINFO = {
+    #     'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
+    #     'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80), (43, 64, 214)]
+    # }
 
     def __init__(self,
                  data_root: str,
@@ -113,26 +113,27 @@ class OSDaR23Dataset(Det3DDataset):
             all path has been converted to absolute path.
         """
         if self.modality['use_lidar']:
-            if 'plane' in info:
-                # convert ground plane to velodyne coordinates
-                plane = np.array(info['plane'])
-                lidar2cam = np.array(
-                    info['images']['CAM2']['lidar2cam'], dtype=np.float32)
-                reverse = np.linalg.inv(lidar2cam)
+            # if 'plane' in info:
+            #     # convert ground plane to velodyne coordinates
+            #     plane = np.array(info['plane'])
+            #     lidar2cam = np.array(
+            #         info['images']['CAM2']['lidar2cam'], dtype=np.float32)
+            #     reverse = np.linalg.inv(lidar2cam)
 
-                (plane_norm_cam, plane_off_cam) = (plane[:3],
-                                                   -plane[:3] * plane[3])
-                plane_norm_lidar = \
-                    (reverse[:3, :3] @ plane_norm_cam[:, None])[:, 0]
-                plane_off_lidar = (
-                    reverse[:3, :3] @ plane_off_cam[:, None][:, 0] +
-                    reverse[:3, 3])
-                plane_lidar = np.zeros_like(plane_norm_lidar, shape=(4, ))
-                plane_lidar[:3] = plane_norm_lidar
-                plane_lidar[3] = -plane_norm_lidar.T @ plane_off_lidar
-            else:
-                plane_lidar = None
-
+            #     (plane_norm_cam, plane_off_cam) = (plane[:3],
+            #                                        -plane[:3] * plane[3])
+            #     plane_norm_lidar = \
+            #         (reverse[:3, :3] @ plane_norm_cam[:, None])[:, 0]
+            #     plane_off_lidar = (
+            #         reverse[:3, :3] @ plane_off_cam[:, None][:, 0] +
+            #         reverse[:3, 3])
+            #     plane_lidar = np.zeros_like(plane_norm_lidar, shape=(4, ))
+            #     plane_lidar[:3] = plane_norm_lidar
+            #     plane_lidar[3] = -plane_norm_lidar.T @ plane_off_lidar
+            # else:
+            #     plane_lidar = None
+            
+            plane_lidar = None
             info['plane'] = plane_lidar
 
         if self.load_type == 'fov_image_based' and self.load_eval_anns:
@@ -173,18 +174,7 @@ class OSDaR23Dataset(Det3DDataset):
                 ann_info['depths'] = np.zeros((0), dtype=np.float32)
 
         ann_info = self._remove_dontcare(ann_info)
-        # # in kitti, lidar2cam = R0_rect @ Tr_velo_to_cam
-        # lidar2cam = np.array(info['images']['CAM2']['lidar2cam'])
-        # # convert gt_bboxes_3d to velodyne coordinates with `lidar2cam`
-
-        # # TODO: We certainly need to change this, since we have no images
-        # gt_bboxes_3d = CameraInstance3DBoxes(
-        #     ann_info['gt_bboxes_3d']).convert_to(self.box_mode_3d,
-        #                                          np.linalg.inv(lidar2cam))
-        
-        # TODO: Needs investigation
-        gt_bboxes_3d = LiDARInstance3DBoxes(
-            ann_info['gt_bboxes_3d'])
-
+        gt_bboxes_3d = LiDARInstance3DBoxes(ann_info['gt_bboxes_3d'])
         ann_info['gt_bboxes_3d'] = gt_bboxes_3d
+        
         return ann_info

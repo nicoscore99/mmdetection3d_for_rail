@@ -3,17 +3,17 @@ _base_ = [
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='data/osdar23_3class/training/rtx4090_pvrcnn_run1_3class/',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'pv-rcnn',
-#              'name': 'rtx4090_pvrcnn_run1_3class'
-#              })
-# ]
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='rtx4090_pvrcnn_run4_src_osdar23_3class_medium_range',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'pv-rcnn',
+             'name': 'rtx4090_pvrcnn_run4_src_osdar23_3class_medium_range'
+             })
+]
 
 default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
 
@@ -21,7 +21,7 @@ dataset = dict(type='OSDaR23Dataset')
 voxel_size = [0.05, 0.05, 0.1]
 point_cloud_range = [0, -40, -3, 70.4, 40, 1]
 
-data_root = 'data/osdar23_3class/'
+data_root = 'data/osdar23_3class_medium_range/'
 class_names = ['pedestrian', 'cyclist', 'car']
 metainfo = dict(CLASSES=class_names)
 backend_args = None
@@ -95,10 +95,10 @@ model = dict(
         type='Det3DDataPreprocessor',
         voxel=True,
         voxel_layer=dict(
-            max_num_points=20,  # max_points_per_voxel
+            max_num_points=10,  # max_points_per_voxel
             point_cloud_range=point_cloud_range,
             voxel_size=voxel_size,
-            max_voxels=(12000, 12000))),
+            max_voxels=(16000, 40000))),
     voxel_encoder=dict(type='HardSimpleVFE'),
     middle_encoder=dict(
         type='SparseEncoder',
@@ -179,12 +179,12 @@ model = dict(
             type='Anchor3DRangeGenerator',
             ranges=[[0, -40.0, -0.6, 70.4, 40.0, -0.6],
                     [0, -40.0, -0.6, 70.4, 40.0, -0.6],
-                    # [0, -40.0, -1.78, 70.4, 40.0, -1.78],
-                    [0, -40.0, -0.6, 70.4, 40.0, -0.6]],
+                    [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
+                    # [0, -40.0, -0.6, 70.4, 40.0, -0.6]],
                     # [0, -40.0, -1.78, 70.4, 40.0, -1.78],
                     # [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
             # sizes=[[0.89, 0.86, 1.89], [4.3, 3.07, 2.79], [62.43, 4.01, 4.27], [1.72, 0.89, 1.27], [0.45, 0.45, 0.41], [1.62, 1.14, 4.67]], 
-            sizes=[[0.89, 0.86, 1.89], [4.3, 3.07, 2.79],  [1.72, 0.89, 1.27]], 
+            sizes=[[0.89, 0.86, 1.89], [1.72, 0.89, 1.27], [4.3, 3.07, 2.79]], 
             rotations=[0, 1.57],
             reshape_out=False),
         diff_rad_by_sin=True,
@@ -394,12 +394,12 @@ val_evaluator = dict(
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23_3class/training/rtx4090_pvrcnn_run1_3class/',
+    output_dir='data/osdar23_3class_medium_range/training/rtx4090_pvrcnn_run4_src_osdar23_3class_medium_range/training',
     pcd_limit_range=[0, -40, -3, 70.4, 40, 5],
-    save_graphics=True,
+    save_graphics=False,
     backend_args=backend_args)
 
-lr = 0.001
+lr = 0.002
 optim_wrapper = dict(optimizer=dict(lr=lr))
 param_scheduler = [
     # learning rate scheduler
@@ -408,18 +408,18 @@ param_scheduler = [
     # lr * 1e-4
     dict(
         type='CosineAnnealingLR',
-        T_max=15,
+        T_max=25,
         eta_min=lr * 10,
         begin=0,
-        end=15,
+        end=25,
         by_epoch=True,
         convert_to_iter_based=True),
     dict(
         type='CosineAnnealingLR',
-        T_max=25,
+        T_max=35,
         eta_min=lr * 1e-4,
-        begin=15,
-        end=40,
+        begin=25,
+        end=50,
         by_epoch=True,
         convert_to_iter_based=True),
     # momentum scheduler
@@ -427,18 +427,18 @@ param_scheduler = [
     # during the next 24 epochs, momentum increases from 0.85 / 0.95 to 1
     dict(
         type='CosineAnnealingMomentum',
-        T_max=15,
+        T_max=25,
         eta_min=0.85 / 0.95,
         begin=0,
-        end=15,
+        end=25,
         by_epoch=True,
         convert_to_iter_based=True),
     dict(
         type='CosineAnnealingMomentum',
-        T_max=25,
+        T_max=35,
         eta_min=1,
-        begin=15,
-        end=40,
+        begin=25,
+        end=50,
         by_epoch=True,
         convert_to_iter_based=True)
 ]

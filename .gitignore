@@ -150,3 +150,6 @@ checkpoints/
 demo/local_outputs/
 demo/remote_outputs/
 outputs/
+
+# Experiments
+experiments/

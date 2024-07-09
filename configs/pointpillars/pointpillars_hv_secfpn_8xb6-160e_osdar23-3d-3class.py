@@ -6,10 +6,9 @@ _base_ = [
 
 dataset = dict(type='OSDaR23Dataset')
 point_cloud_range =  [0, -39.68, -3, 69.12, 39.68, 1]
-# point_cloud_range = [0, -43.2, -3, 99.20, 42.2, 1]
 # dataset settings
-data_root = 'data/osdar23_3class/'
-class_names = ['Pedestrian', 'Cyclist', 'Car']
+data_root = 'data/osdar23_3class_medium_range/'
+class_names = ['pedestrian', 'cyclist', 'car']
 metainfo = dict(classes=class_names)
 backend_args = None
 
@@ -21,10 +20,10 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_min_points=dict(Pedestrian=5, Cyclist=5, Car=5),
+        filter_by_min_points=dict(pedestrian=5, cyclist=5, car=5),
         ),
     classes=class_names,
-    sample_groups=dict(Pedestrian=5, Cyclist=5, Car=5),
+    sample_groups=dict(pedestrian=5, cyclist=5, car=5),
     points_loader=dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -90,19 +89,11 @@ val_dataloader = dict(dataset=dict(pipeline=test_pipeline, metainfo=metainfo))
 # In practice PointPillars also uses a different schedule
 # optimizer
 lr = 0.001
-epoch_num = 100
+epoch_num = 80
 optim_wrapper = dict(
     optimizer=dict(lr=lr), clip_grad=dict(max_norm=35, norm_type=2))
 
 param_scheduler = [
-    dict(
-        type='CosineAnnealingLR',
-        T_max=epoch_num * 0.6,
-        eta_min=lr * 10,
-        begin=0,
-        end=epoch_num,
-        by_epoch=True,
-        convert_to_iter_based=True),
     dict(
         type='CosineAnnealingLR',
         T_max=epoch_num * 0.4,
@@ -135,34 +126,19 @@ param_scheduler = [
         end=epoch_num * 1,
         convert_to_iter_based=True)
 ]
-# max_norm=35 is slightly better than 10 for PointPillars in the earlier
-# development of the codebase thus we keep the setting. But we does not
-# specifically tune this parameter.
-# PointPillars usually need longer schedule than second, we simply double
-# the training schedule. Do remind that since we use RepeatDataset and
-# repeat factor is 2, so we actually train 160 epochs.
+
 train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=1)
 val_cfg = dict()
 test_cfg = dict()
 
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='data/osdar23_test/training/pointpillars_test_delete_after_use/',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'project': 'testestest',
-#              'entity': 'railsensing'
-#              })
-# ]
 custom_hooks = [
     dict(type='WandbLoggerHook', 
-         save_dir='data/osdar23_3class/training/rtx4090_pp_run1_/',
+         save_dir='data/osdar23_3class_medium_range/training/rtx4090_pp_run1_src_osdar23_3class_medium_range/',
          yaml_config_path='wandb_auth.yaml',
          log_artifact=True,
          init_kwargs={
              'entity': 'railsensing',
-             'project': 'mmdetection3d',
-             'name': 'rtx4k_pointpillars_run6_2class'
+             'project': 'pointpillars',
+             'name': 'rtx4090_pp_run1_src_osdar23_3class_medium_range'
              })
 ]

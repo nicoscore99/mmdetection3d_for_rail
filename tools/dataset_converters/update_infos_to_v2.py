@@ -538,14 +538,19 @@ def update_osdar23_infos(pkl_path, out_dir):
         time.sleep(5)
 
     # TODO: This should really not be hardcoded in here!!!
-
-    METAINFO = {
-        'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
-    }
     
     # METAINFO = {
-    #     'classes': ('pedestrian', 'cyclist', 'car'),
+    #     'classes': ('pedestrian', 'car', 'train', 'bike', 'unknown', 'dontcare'),
+    #     'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80), (43, 64, 214)]
     # }
+
+    # METAINFO = {
+    #     'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
+    # }
+    
+    METAINFO = {
+        'classes': ('pedestrian', 'cyclist', 'car'),
+    }
     
     # METAINFO = {
     #     'classes': ('pedestrian', 'car'),

@@ -4,19 +4,11 @@ custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
                                'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)
 dataset = dict(type='OSDaR23Dataset')
 dataset_type = 'OSDaR23Dataset'
-data_root = 'data/osdar23_3class/'
+data_root = 'data/osdar23_3class_medium_range/'
 class_names = ['pedestrian', 'cyclist', 'car']
-# According to Robosense M1+ specifications (Range: 200m, Horizontal FOV: 120°)
+
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
-
-# Example to use different file client
-# Method 1: simply set the data root and let the file I/O module
-# automatically infer from prefix (not support LMDB and Memcache yet)
-
-# This thing is for reading and writing data from/to S3
-# data_root = 's3://openmmlab/datasets/detection3d/kitti/'
-
 
 backend_args = None
 
@@ -74,7 +66,7 @@ eval_pipeline = [
          keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 train_dataloader = dict(
-    batch_size=6,
+    batch_size=2,
     num_workers=4,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -95,7 +87,7 @@ train_dataloader = dict(
             box_type_3d='LiDAR',
             backend_args=backend_args)))
 val_dataloader = dict(
-    batch_size=6,
+    batch_size=2,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,
@@ -112,7 +104,7 @@ val_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 test_dataloader = dict(
-    batch_size=6,
+    batch_size=2,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,
@@ -133,9 +125,9 @@ val_evaluator = dict(
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23_3class/training/rtx4090_pvrcnn_run1_3class/',
-    pcd_limit_range=[0, -39.68, -10, 69.12, 39.68, 10],
-    save_graphics=True,
+    output_dir='data/osdar23_3class_medium_range/training/rtx4090_pvrcnn_run4_src_osdar23_3class_medium_range/',
+    pcd_limit_range=[0, -40, -3, 70.4, 40, 1],
+    save_graphics=False,
     backend_args=backend_args)
 test_evaluator = val_evaluator
 
