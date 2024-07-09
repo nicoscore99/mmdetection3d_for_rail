@@ -66,7 +66,6 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  ann_file: str,
                  metric: str = 'det3d',
                  pcd_limit_range: List[float] = [0, -39.68, -20, 69.12, 39.68, 20],
-                #  pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 1],
                  force_single_assignement: bool = False,
                  prefix: Optional[str] = None,
                  pklfile_prefix: Optional[str] = None,
@@ -76,11 +75,13 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  collect_device: str = 'cpu',
                  save_graphics: Optional[bool] = False,
                  save_evaluation_results: Optional[bool] = False,
-                 difficulty_levels: Optional[List[float]] = [0.01],
+                 difficulty_levels: Optional[List[float]] = [0.1, 0.3, 0.5, 0.7],
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  evaluation_file_name: Optional[str] = 'evaluation_results.json',
-                 backend_args: Optional[dict] = None) -> None:
+                 backend_args: Optional[dict] = None,
+                 save_random_viz: Optional[bool] = False,
+                 random_viz_keys: Optional[int] = None) -> 5:
     
         self.default_prefix = 'General 3D Det metric mmlab'
         super(General_3dDet_Metric_MMLab, self).__init__(collect_device=collect_device, prefix=prefix)
@@ -99,6 +100,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         self.evaluation_file_name = evaluation_file_name
         self.difficulty_levels = difficulty_levels
         self.metric = metric
+        self.num_random_keys_to_be_visualized = random_viz_keys
+        self.save_random_viz = save_random_viz
 
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
@@ -196,6 +199,8 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         if not self.evaluator.total_dt_instances >= 10:
             print_log("The number of dt instances is less than 10, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
+
+        ######## Evaluation ########
         
         evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
                                                                                              class_accuracy_requirements=['easy', 'hard'])
@@ -218,16 +223,24 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         curves_dict['roc'] = self.evaluator.roc_curve(iou_level=0.5)
         curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)
 
+        ######## Visualization ########
+
         if self.save_graphics:
             self.save_plot(plot=self.evaluator.precision_recall_plot(iou_level=0.5), filename = 'precision_recall_plot_pointpillars_kitti.png')
             self.save_plot(plot=self.evaluator.roc_plot(iou_level=0.5), filename = 'roc_plot_pointpillars_kitti.png')
             self.save_plot(plot=self.evaluator.confusion_matrix_plot(iou_level=0.5), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
 
+        ####### Saving the evaluation results #######
+
         # Save the evaluation results to a .json file
         if self.save_evaluation_results:
-            save_path = os.join(self.output_dir, self.evaluation_file_name)
+            save_path = osp.join(self.output_dir, self.evaluation_file_name)
             with open(save_path, 'w') as f:
                 json.dump(evaluation_results_dict, f, indent=4)
+
+        ######## Visualization of random keys ########
+
+        self.visualize_random_keys(_gt_annos=gt_annos_valid, _dt_annos=dt_annos_valid, num_keys=self.num_random_keys_to_be_visualized)
             
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
     
@@ -295,6 +308,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         num_bbox_before = sum([len(annos[key].bboxes_3d) for key in annos.keys()])
         num_bbox_after = sum([len(annos_valid[key].bboxes_3d) for key in annos_valid.keys()])
+        print("Number of frames evaluated: ", len(annos.keys()))
         print("Number of ground thruth bounding boxes after filtering: ", num_bbox_after)
         
         # Devision by zero check
@@ -384,6 +398,34 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         plt.savefig(save_dir)
 
+    def visualize_random_keys(self,
+                              _gt_annos,
+                              _dt_annos,
+                              num_keys: int = 4) -> None:
+        
+        if num_keys == 0 or num_keys == None:
+            return
+        elif num_keys > len(_gt_annos.keys()):
+            print("The number of keys is larger than the number of keys in the dictionary. Only visulaizing max 20 keys.")
+            num_keys = 20
+        if num_keys > 20:
+            print("The number of keys is larger than 20. Only visualizing 20 keys.")
+            num_keys = 20
+                
+        keys = list(_gt_annos.keys())
+        random_choice = np.random.choice(keys, num_keys, replace=False)
+
+        for key in random_choice:
+            fig = show_projections(key=key,
+                                gt_3d_bboxes=_gt_annos[key].bboxes_3d,
+                                dt_3d_bboxes=_dt_annos[key].bboxes_3d)
+            
+            if self.save_random_viz:
+                
+                save_dir = osp.join(self.output_dir, 'bbox_visualizations', f'random_viz_{key}.png')
+
+                plt.savefig(save_dir)
+
 class EvaluatorMetrics():
 
     def __init__(self, 
@@ -437,13 +479,6 @@ class EvaluatorMetrics():
         assigned_max_overlaps = []
         assigned_labels = []     
         
-        # # select 10 random keys
-        # keys = list(self._gt_annos_valid.keys())
-        # random_choice = np.random.choice(keys, 50) 
-        
-        # # set random choice to last 10 keys
-        # random_choice = keys[-10:]
-        
         for i, key in enumerate(self._gt_annos_valid.keys()):
             
             gt_instance = self._gt_annos_valid[key]
@@ -455,14 +490,7 @@ class EvaluatorMetrics():
             dt_scores.append(dt_instance.scores)
             assigned_gt_inds.append(assign_result.gt_inds)
             assigned_max_overlaps.append(assign_result.max_overlaps)
-            assigned_labels.append(assign_result.labels)
-            
-            # # # Print the bev boxes
-            # if key in random_choice:
-            #     draw_bev_projection(key=key,
-            #             gt_3d_bboxes=self._gt_annos_valid[key].bboxes_3d,
-            #             dt_3d_bboxes=self._dt_annos_valid[key].bboxes_3d)
-        
+            assigned_labels.append(assign_result.labels)        
 
         # assert that all out the lists have the same length
         assert len(dt_labels) == len(dt_scores) == len(assigned_gt_inds) == len(assigned_max_overlaps) == len(assigned_labels)
@@ -840,13 +868,13 @@ class EvaluatorMetrics():
         # ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
         
         ap_n = 0.
-
-        if not isinstance(n, float):
+        if not isinstance(n, int):
             n = float(n)
 
-        up_n = n/10.
-
-        for t in np.arange(0., up_n, 0.1):
+        # Assert that precision and recall have the same length
+        assert len(precision) == len(recall)
+        recall_levels = np.linspace(0, 1, n)
+        for t in recall_levels:
             if np.sum(recall >= t) == 0:
                 p = 0
             else:
@@ -919,13 +947,8 @@ class EvaluatorMetrics():
     
 ####### Helper functions #######
 
-def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
-    
-    # Format of the boundingboxes
-    
-    print("gt_3d_bboxes: ", gt_3d_bboxes)
-    print("dt_3d_bboxes: ", dt_3d_bboxes)
-    
+def show_projections(key, gt_3d_bboxes, dt_3d_bboxes):
+        
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     
@@ -991,7 +1014,7 @@ def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
             [-gt_box_3d[3]/2, gt_box_3d[4]/2, gt_box_3d[5]] # T4: Top back left
         ])
         
-        theta = np.radians(gt_box_3d[6])
+        theta = gt_box_3d[6]
         R = np.array([
             [np.cos(theta), -np.sin(theta), 0],
             [np.sin(theta), np.cos(theta), 0],
@@ -1027,7 +1050,7 @@ def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
             [-dt_box_3d[3]/2, dt_box_3d[4]/2, dt_box_3d[5]] # T4: Top back left
         ])
         
-        theta = np.radians(dt_box_3d[6])
+        theta = dt_box_3d[6]
         R = np.array([
             [np.cos(theta), -np.sin(theta), 0],
             [np.sin(theta), np.cos(theta), 0],
@@ -1050,7 +1073,6 @@ def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
         for edge in edges:
             ax.add_collection3d(Poly3DCollection([edge], facecolors='cornflowerblue', linewidths=1, edgecolors='royalblue', alpha=.25))
     
-        
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
@@ -1086,5 +1108,6 @@ def draw_bev_projection(key, gt_3d_bboxes, dt_3d_bboxes):
     scale = vertices.flatten()
     ax.auto_scale_xyz(scale, scale, scale)
         
-    # save the plot to the save directory
-    plt.show(block=True)
+    # plt.show(block=True)
+
+    return fig

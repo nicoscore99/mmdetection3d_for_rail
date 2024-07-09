@@ -33,8 +33,9 @@ class SECOND(BaseModule):
                      type='BN', eps=1e-3, momentum=0.01),
                  conv_cfg: ConfigType = dict(type='Conv2d', bias=False),
                  init_cfg: OptMultiConfig = None,
+                 freeze_cfg: OptMultiConfig = None,
                  pretrained: Optional[str] = None) -> None:
-        super(SECOND, self).__init__(init_cfg=init_cfg)
+        super(SECOND, self).__init__(init_cfg=init_cfg, freeze_cfg=freeze_cfg)
         assert len(layer_strides) == len(layer_nums)
         assert len(out_channels) == len(layer_nums)
 
