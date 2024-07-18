@@ -11,7 +11,6 @@ from mmdet3d.datasets.transforms import data_augment_utils
 from mmdet3d.registry import TRANSFORMS
 from mmdet3d.structures.ops import box_np_ops
 
-
 class BatchSampler:
     """Class for sampling specific category of ground truths.
 
@@ -102,6 +101,7 @@ class DataBaseSampler(object):
                  rate: float,
                  prepare: dict,
                  sample_groups: dict,
+                 sample_datasets: Optional[List[str]] = None,
                  classes: Optional[List[str]] = None,
                  points_loader: dict = dict(
                      type='LoadPointsFromFile',
@@ -130,10 +130,13 @@ class DataBaseSampler(object):
         # filter database infos
         from mmengine.logging import MMLogger
         logger: MMLogger = MMLogger.get_current_instance()
+
+        logger.info('Before filter database:')
         for k, v in db_infos.items():
             logger.info(f'load {len(v)} {k} database infos in DataBaseSampler')
         for prep_func, val in prepare.items():
             db_infos = getattr(self, prep_func)(db_infos, val)
+
         logger.info('After filter database:')
         for k, v in db_infos.items():
             logger.info(f'load {len(v)} {k} database infos in DataBaseSampler')
@@ -147,12 +150,13 @@ class DataBaseSampler(object):
             self.sample_groups.append({name: int(num)})
 
         self.group_db_infos = self.db_infos  # just use db_infos
-        self.sample_classes = []
-        self.sample_max_nums = []
+        self.sample_classes = [] # ['Car', 'Pedestrian', 'Cyclist']
+        self.sample_max_nums = [] # [15, 15, 15]
         for group_info in self.sample_groups:
             self.sample_classes += list(group_info.keys())
             self.sample_max_nums += list(group_info.values())
 
+        # This is a dict of BatchSampler, one for each class.
         self.sampler_dict = {}
         for k, v in self.group_db_infos.items():
             self.sampler_dict[k] = BatchSampler(v, k, shuffle=True)
@@ -233,15 +237,25 @@ class DataBaseSampler(object):
                   sampled ground truth 3D bounding boxes
                 - points (np.ndarray): sampled points
                 - group_ids (np.ndarray): ids of sampled ground truths
+
+        I believe what this function does is the following: 
+        
+        n_a:= number of boxes per class
+        m_a:= number of boxes we want to choose from
+
+        1. For each class, we want to
+            a. Choose m_a - n_a boxes
+            b. Make sure that these boxes do not overlap with the original boxes
+
+            --> These are pseaudo boxes for classification 
+        
         """
         sampled_num_dict = {}
-        sample_num_per_class = []
+        sample_num_per_class = [] # Remaining number of samples we still need to
 
         for class_name, max_sample_num in zip(self.sample_classes,
                                               self.sample_max_nums):
             class_label = self.cat2label[class_name]
-            # sampled_num = int(max_sample_num -
-            #                   np.sum([n == class_name for n in gt_names]))
             sampled_num = int(max_sample_num -
                               np.sum([n == class_label for n in gt_labels]))
             sampled_num = np.round(self.rate * sampled_num).astype(np.int64)
@@ -255,6 +269,7 @@ class DataBaseSampler(object):
         for class_name, sampled_num in zip(self.sample_classes,
                                            sample_num_per_class):
             if sampled_num > 0:
+                # Test for collision to avoid bbox overlapping
                 sampled_cls = self.sample_class_v2(class_name, sampled_num,
                                                    avoid_coll_boxes)
 

@@ -1,5 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-from typing import Callable, List, Union
+from typing import Callable, List, Union, Optional
 
 import numpy as np
 
@@ -73,6 +73,7 @@ class KittiOSDaR23Merge(Det3DDataset):
                  filter_empty_gt: bool = True,
                  test_mode: bool = False,
                  pcd_limit_range: List[float] = [0, -40, -3, 70.4, 40, 1],
+                 balance_datasets: bool = Optional[False],
                  **kwargs) -> None:
         
         assert len(KittiOSDaR23Merge.METAINFO['classes']) == len(KittiOSDaR23Merge.METAINFO['palette'])
@@ -91,8 +92,15 @@ class KittiOSDaR23Merge(Det3DDataset):
             filter_empty_gt=filter_empty_gt,
             test_mode=test_mode,
             **kwargs)
+        
         assert self.modality is not None
         assert box_type_3d.lower() in ('lidar', 'camera')
+        
+        # Balanced dataset sampling
+        if balance_datasets:
+            balanced_index_list = self.select_balanced_indeces()
+            self.get_subset_(balanced_index_list)
+        
 
     def parse_data_info(self, info: dict) -> dict:
         """Process the raw data info.
@@ -172,3 +180,11 @@ class KittiOSDaR23Merge(Det3DDataset):
 
         ann_info['gt_bboxes_3d'] = gt_bboxes_3d
         return ann_info
+
+    def select_balanced_indeces(self):
+        """
+        Select a subset of the dataset that is balanced in terms of the classes
+        """
+        
+        # for now, return a random selection of numbers from 1 to 100
+        return np.random.choice(100, 50, replace=False)

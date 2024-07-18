@@ -390,7 +390,7 @@ class ObjectSample(BaseTransform):
         """Transform function to sample ground truth objects to the data.
 
         Args:
-            input_dict (dict): Result dict from loading pipeline.
+            input_dict (dict): Result dict from loading pipeline. Contains the information for a single frame.
 
         Returns:
             dict: Results after object sampling augmentation,

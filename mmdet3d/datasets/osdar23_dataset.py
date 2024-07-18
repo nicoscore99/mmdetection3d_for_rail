@@ -53,7 +53,7 @@ class OSDaR23Dataset(Det3DDataset):
     """
     # TODO: use full classes of kitti
     METAINFO = {
-        'classes': ('pedestrian', 'cyclist', 'car'),
+        'classes': ('Pedestrian', 'Cyclist', 'Car'),
         'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
     }
 

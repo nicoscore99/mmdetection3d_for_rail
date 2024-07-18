@@ -132,23 +132,22 @@ class OSDaR23_2_KITTI_Converter(object):
         
         # Mapping of the OSDAR classes into the classes we want to consider
         # Hint: Transition and switch are not considered since they are not 3D bounding box labeled in the LiDAR data
-        self.class_names = {
-            'pedestrian': ['person', 'crowd'],
-            'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            'car': ['road_vehicle'],
-            'train': ['train', 'wagons'],
-            'unknown': ['animal', 'group_of_animals'],
-            # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
-        }
-
         # self.class_names = {
         #     'pedestrian': ['person', 'crowd'],
-        #     'car': ['road_vehicle'],
-        #     # 'train': ['train', 'wagons'],
         #     'cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-        #     # 'unknown': ['animal', 'group_of_animals'],
+        #     'car': ['road_vehicle'],
+        #     'train': ['train', 'wagons'],
         #     # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
         # }
+
+        self.class_names = {
+            'Pedestrian': ['person', 'crowd'],
+            'Car': ['road_vehicle'],
+            # 'train': ['train', 'wagons'],
+            'Cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+            # 'unknown': ['animal', 'group_of_animals'],
+            # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
+        }
         
         # self.class_names = {
         #     'pedestrian': ['person', 'crowd'],

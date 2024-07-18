@@ -63,7 +63,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
     """
 
     def __init__(self,
-                 ann_file: str,
+                 ann_file: Optional[str] = None, # we do not necessarily need an annotation file
                  metric: str = 'det3d',
                  pcd_limit_range: List[float] = [0, -39.68, -20, 69.12, 39.68, 20],
                  force_single_assignement: bool = False,

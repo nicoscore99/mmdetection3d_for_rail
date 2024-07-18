@@ -1,15 +1,18 @@
 _base_ = [
-    '../_base_/models/pointpillars_hv_secfpn_kitti.py',
-    '../_base_/datasets/kitti-3d-3class.py',
+    '../_base_/models/pointpillars_hv_secfpn_osdar23.py',
+    '../_base_/datasets/kitti_osdar23_merge_dataset.py',
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
-point_cloud_range = [0, -39.68, -3, 69.12, 39.68, 1]
+dataset = dict(type='KittiOSDaR23Merge')
+point_cloud_range =  [0, -39.68, -3, 69.12, 39.68, 1]
 # dataset settings
-data_root = 'data/kitti/'
-class_names = ['Pedestrian', 'Cyclist', 'Car']
+data_root = 'data/kitti_osdar23_merge/'
+class_names = ['pedestrian', 'cyclist', 'car']
 metainfo = dict(classes=class_names)
 backend_args = None
+
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
 
 # PointPillars adopted a different sampling strategies among classes
 db_sampler = dict(
@@ -17,10 +20,10 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_difficulty=[-1],
-        filter_by_min_points=dict(Car=5, Pedestrian=5, Cyclist=5)),
+        filter_by_min_points=dict(pedestrian=5, cyclist=5, car=5),
+        ),
     classes=class_names,
-    sample_groups=dict(Car=15, Pedestrian=15, Cyclist=15),
+    sample_groups=dict(pedestrian=5, cyclist=5, car=5),
     points_loader=dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -58,6 +61,7 @@ test_pipeline = [
         load_dim=4,
         use_dim=4,
         backend_args=backend_args),
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1333, 800),
@@ -73,11 +77,13 @@ test_pipeline = [
             dict(
                 type='PointsRangeFilter', point_cloud_range=point_cloud_range)
         ]),
-    dict(type='Pack3DDetInputs', keys=['points'])
+    # dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
+    dict(
+        type='Pack3DDetInputs', 
+        keys=['points', 'gt_labels_3d', 'gt_bboxes_3d'])
 ]
 
-train_dataloader = dict(
-    dataset=dict(dataset=dict(pipeline=train_pipeline, metainfo=metainfo)))
+train_dataloader = dict(dataset=dict(dataset=dict(pipeline=train_pipeline, metainfo=metainfo)))
 test_dataloader = dict(dataset=dict(pipeline=test_pipeline, metainfo=metainfo))
 val_dataloader = dict(dataset=dict(pipeline=test_pipeline, metainfo=metainfo))
 # In practice PointPillars also uses a different schedule
@@ -86,6 +92,7 @@ lr = 0.001
 epoch_num = 80
 optim_wrapper = dict(
     optimizer=dict(lr=lr), clip_grad=dict(max_norm=35, norm_type=2))
+
 param_scheduler = [
     dict(
         type='CosineAnnealingLR',
@@ -119,12 +126,19 @@ param_scheduler = [
         end=epoch_num * 1,
         convert_to_iter_based=True)
 ]
-# max_norm=35 is slightly better than 10 for PointPillars in the earlier
-# development of the codebase thus we keep the setting. But we does not
-# specifically tune this parameter.
-# PointPillars usually need longer schedule than second, we simply double
-# the training schedule. Do remind that since we use RepeatDataset and
-# repeat factor is 2, so we actually train 160 epochs.
-train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=2)
+
+train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=1)
 val_cfg = dict()
 test_cfg = dict()
+
+# custom_hooks = [
+#     dict(type='WandbLoggerHook', 
+#          save_dir='data/osdar23_3class_medium_range/training/rtx4090_pp_run1_src_osdar23_3class_medium_range/',
+#          yaml_config_path='wandb_auth.yaml',
+#          log_artifact=True,
+#          init_kwargs={
+#              'entity': 'railsensing',
+#              'project': 'pointpillars',
+#              'name': 'rtx4090_pp_run1_src_osdar23_3class_medium_range'
+#              })
+# ]

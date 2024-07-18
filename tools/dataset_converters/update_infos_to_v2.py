@@ -549,7 +549,7 @@ def update_osdar23_infos(pkl_path, out_dir):
     # }
     
     METAINFO = {
-        'classes': ('pedestrian', 'cyclist', 'car'),
+        'classes': ('Pedestrian', 'Cyclist', 'Car'),
     }
     
     # METAINFO = {

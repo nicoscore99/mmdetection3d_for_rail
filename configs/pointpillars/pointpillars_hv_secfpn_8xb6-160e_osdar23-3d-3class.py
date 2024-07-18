@@ -4,7 +4,7 @@ _base_ = [
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
-dataset = dict(type='OSDaR23Dataset')
+dataset = dict(type='OSDAR23Dataset')
 point_cloud_range =  [0, -39.68, -3, 69.12, 39.68, 1]
 # dataset settings
 data_root = 'data/osdar23_3class_medium_range/'
