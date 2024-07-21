@@ -631,7 +631,7 @@ class OSDaR23_2_KITTI_Converter(object):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('load_dir', help='Directory to load OSDaR Open Dataset tfrecords')
+    parser.add_argument('load_dir', help='Directory to load OSDaR Open Dataset')
     parser.add_argument('save_dir', help='Directory to save converted KITTI-format data')
     parser.add_argument('--prefix', default='', help='Prefix to be added to converted file names')
     parser.add_argument('--num_proc', default=1, help='Number of processes to spawn')

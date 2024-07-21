@@ -38,5 +38,5 @@ __all__ = [
     'LoadPointsFromMultiSweeps', 'WaymoDataset', 'BackgroundPointsFilter',
     'VoxelBasedPointSampler', 'get_loading_pipeline', 'RandomDropPointsColor',
     'RandomJitterPoints', 'ObjectNameFilter', 'AffineResize',
-    'RandomShiftScale', 'LoadPointsFromDict', 'Resize3D', 'RandomResize3D', 'OSDaR23Dataset'
+    'RandomShiftScale', 'LoadPointsFromDict', 'Resize3D', 'RandomResize3D', 'OSDaR23Dataset', 'ROBOSENSE_M1_PLUS'
 ]
