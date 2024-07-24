@@ -3,17 +3,17 @@ _base_ = [
     '../_base_/schedules/cyclic-40e.py', '../_base_/default_runtime.py'
 ]
 
-custom_hooks = [
-    dict(type='WandbLoggerHook', 
-         save_dir='data/osdar23_3class/training/rtx4k_pvrcnn_run5_3class/',
-         yaml_config_path='wandb_auth.yaml',
-         log_artifact=True,
-         init_kwargs={
-             'entity': 'railsensing',
-             'project': 'pv-rcnn',
-             'name': 'rtx4k_pvrcnn_run5_3class'
-             })
-]
+# custom_hooks = [
+#     dict(type='WandbLoggerHook', 
+#          save_dir='data/osdar23_3class/training/test/',
+#          yaml_config_path='wandb_auth.yaml',
+#          log_artifact=True,
+#          init_kwargs={
+#              'entity': 'railsensing',
+#              'project': 'pv-rcnn',
+#              'name': 'rtx4k_pvrcnn_run5_3class'
+#              })
+# ]
 
 default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
 
@@ -22,7 +22,7 @@ voxel_size = [0.05, 0.05, 0.1]
 point_cloud_range = [0, -40, -3, 70.4, 40, 1]
 
 data_root = 'data/osdar23_3class/'
-class_names = ['pedestrian', 'cyclist', 'car']
+class_names = ['Pedestrian', 'Cyclist', 'Car']
 metainfo = dict(CLASSES=class_names)
 backend_args = None
 db_sampler = dict(
@@ -30,9 +30,9 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_min_points=dict(pedestrian=5, cyclist=5, car=5)),
+        filter_by_min_points=dict(Pedestrian=5, Cyclist=5, Car=5)),
     classes=class_names,
-    sample_groups=dict(pedestrian=5, cyclist=5, car=5),
+    sample_groups=dict(Pedestrian=5, Cyclist=5, Car=5),
     points_loader=dict(
         type='LoadPointsFromFile',
         coord_type='LIDAR',
@@ -394,7 +394,7 @@ val_evaluator = dict(
     ann_file=data_root + 'kitti_infos_val.pkl',
     metric='det3d',
     classes=class_names,
-    output_dir='data/osdar23_3class/training/rtx4k_pvrcnn_run5_3class/',
+    output_dir='data/osdar23_3class/training/test/',
     pcd_limit_range=[0, -40, -3, 70.4, 40, 5],
     save_graphics=True,
     backend_args=backend_args)
@@ -442,3 +442,5 @@ param_scheduler = [
         by_epoch=True,
         convert_to_iter_based=True)
 ]
+
+work_dir = 'data/osdar23_3class/training/test/'

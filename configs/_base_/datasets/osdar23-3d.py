@@ -5,7 +5,7 @@ custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
 dataset = dict(type='OSDaR23Dataset')
 dataset_type = 'OSDaR23Dataset'
 data_root = 'data/osdar23_3class_medium_range/'
-class_names = ['pedestrian', 'cyclist', 'car']
+class_names = ['Pedestrian', 'Cyclist', 'Car']
 
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
@@ -17,9 +17,9 @@ db_sampler = dict(
     info_path=data_root + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_min_points=dict(pedestrian=5, cyclist=5, car=5),
+        filter_by_min_points=dict(Pedestrian=5, Cyclist=5, Car=5),
     classes=class_names,
-    sample_groups=dict(pedestrian=5, cyclist=5, car=5),
+    sample_groups=dict(Pedestrian=5, Cyclist=5, Car=5),
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
@@ -75,6 +75,7 @@ train_dataloader = dict(
         times=2,
         dataset=dict(
             type=dataset_type,
+            indices=0.05,
             data_root=data_root,
             ann_file='kitti_infos_train.pkl',
             data_prefix=dict(pts='points'),

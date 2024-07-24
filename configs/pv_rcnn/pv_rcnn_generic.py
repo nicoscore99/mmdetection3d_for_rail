@@ -8,19 +8,17 @@ osdar23_dataset = dict(type='OSDaR23Dataset')
 
 ############# Additional Hooks #############
 
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'pv-rcnn',
-#              'name': 'rtx4090_pvrcnn_run3_osdar23_3class',
-#              }),
-#     dict(type='EmptyCacheHook', 
-#          before_epoch=True, after_epoch=True, after_iter=True)
-# ]
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run3_osdar23_3class',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'pv-rcnn',
+             'name': 'rtx4090_pvrcnn_run3_osdar23_3class',
+             })
+]
 
 ############# Generic variables #############
 
@@ -71,6 +69,21 @@ generic_eval_pipeline = [
         load_dim=4,
         use_dim=4,
         backend_args=None),
+    dict(
+        type='MultiScaleFlipAug3D',
+        img_scale=(1333, 800),
+        pts_scale_ratio=1,
+        flip=False,
+        transforms=[
+            dict(
+                type='GlobalRotScaleTrans',
+                rot_range=[0, 0],
+                scale_ratio_range=[1., 1.],
+                translation_std=[0, 0, 0]),
+            dict(type='RandomFlip3D'),
+            dict(
+                type='PointsRangeFilter', point_cloud_range=point_cloud_range)
+        ]),
     dict(type='Pack3DDetInputs', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 
@@ -110,6 +123,7 @@ osdar23_train_pipeline = [
 
 osdar23_train_dataset = dict(
     type=osdar23_dataset_type,
+    # indices=1.0,
     data_root=osdar23_data_root,
     ann_file='kitti_infos_train.pkl',
     data_prefix=dict(pts='points'),
@@ -121,11 +135,12 @@ osdar23_train_dataset = dict(
 
 repeat_osdar23_train_dataset = dict(
     type='RepeatDataset',
-    times=2,
+    times=1,
     dataset=osdar23_train_dataset)
 
 osdar23_val_dataset = dict(
     type=osdar23_dataset_type,
+    # indices=2,
     data_root=osdar23_data_root,
     ann_file='kitti_infos_val.pkl',
     data_prefix=dict(pts='points'),
@@ -136,8 +151,9 @@ osdar23_val_dataset = dict(
     backend_args=None)
 
 ############# Dataloader Config #############
+
 train_dataloader = dict(
-    batch_size=1,
+    batch_size=2,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -148,7 +164,7 @@ train_dataloader = dict(
 )
 
 val_dataloader = dict(
-    batch_size=1,
+    batch_size=2,
     num_workers=2,
     persistent_workers=True,
     drop_last=False,
