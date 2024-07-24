@@ -507,7 +507,7 @@ class CenterHead(BaseModule):
                 (len(self.class_names[idx]), feature_map_size[1],
                  feature_map_size[0]))
 
-            anno_box = gt_bboxes_3d.new_zeros((max_objs, 10),
+            anno_box = gt_bboxes_3d.new_zeros((max_objs, 8),
                                               dtype=torch.float32)
 
             ind = gt_labels_3d.new_zeros((max_objs), dtype=torch.int64)
@@ -565,7 +565,7 @@ class CenterHead(BaseModule):
                     ind[new_idx] = y * feature_map_size[0] + x
                     mask[new_idx] = 1
                     # TODO: support other outdoor dataset
-                    vx, vy = task_boxes[idx][k][7:]
+                    # vx, vy = task_boxes[idx][k][7:]
                     rot = task_boxes[idx][k][6]
                     box_dim = task_boxes[idx][k][3:6]
                     if self.norm_bbox:
@@ -575,8 +575,8 @@ class CenterHead(BaseModule):
                         z.unsqueeze(0), box_dim,
                         torch.sin(rot).unsqueeze(0),
                         torch.cos(rot).unsqueeze(0),
-                        vx.unsqueeze(0),
-                        vy.unsqueeze(0)
+                        # vx.unsqueeze(0),
+                        # vy.unsqueeze(0)
                     ])
 
             heatmaps.append(heatmap)
@@ -639,8 +639,7 @@ class CenterHead(BaseModule):
             # reconstruct the anno_box from multiple reg heads
             preds_dict[0]['anno_box'] = torch.cat(
                 (preds_dict[0]['reg'], preds_dict[0]['height'],
-                 preds_dict[0]['dim'], preds_dict[0]['rot'],
-                 preds_dict[0]['vel']),
+                 preds_dict[0]['dim'], preds_dict[0]['rot']),
                 dim=1)
 
             # Regression loss for dimension, offset, height, rotation

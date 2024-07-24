@@ -13,23 +13,23 @@ osdar23_dataset = dict(type='OSDaR23Dataset')
 
 ############# Additional Hooks #############
 
-# default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'centerpoint',
-#              'name': 'rtx4090_cp_run1_osdar23_3class',
-#              })
-# ]
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'centerpoint',
+             'name': 'rtx4090_cp_run1_osdar23_3class',
+             })
+]
 
 ############# Generic variables #############
 
 class_names = ['Pedestrian', 'Cyclist', 'Car']
-point_cloud_range = [5.0, -70, -3.0, 70, 80.0, 3.0]
+point_cloud_range = [5.0, -70, -3.0, 70, 80.2, 3.0]
 point_cloud_range_inference = point_cloud_range
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
@@ -205,15 +205,14 @@ model = dict(
             voxel_size=voxel_size,
             point_cloud_range=point_cloud_range,
             max_voxels=(90000, 120000))),
-    pts_voxel_encoder=dict(type='HardSimpleVFE', num_features=5),
+    pts_voxel_encoder=dict(type='HardSimpleVFE', num_features=4),
     pts_middle_encoder=dict(
         type='SparseEncoder',
-        in_channels=5,
-        sparse_shape=[41, 1024, 1024],
+        in_channels=4,
+        sparse_shape=[41, 800, 752], # TODO: This certainly needs adaptation
         output_channels=128,
         order=('conv', 'norm', 'act'),
-        encoder_channels=((16, 16, 32), (32, 32, 64), (64, 64, 128), (128,
-                                                                      128)),
+        encoder_channels=((16, 16, 32), (32, 32, 64), (64, 64, 128), (128, 128)),
         encoder_paddings=((0, 0, 1), (0, 0, 1), (0, 0, [0, 1, 1]), (0, 0)),
         block_type='basicblock'),
     pts_backbone=dict(
@@ -236,28 +235,23 @@ model = dict(
         type='CenterHead',
         in_channels=sum([256, 256]),
         tasks=[
-            # dict(num_class=1, class_names=['car']),
-            # dict(num_class=2, class_names=['truck', 'construction_vehicle']),
-            # dict(num_class=2, class_names=['bus', 'trailer']),
-            # dict(num_class=1, class_names=['barrier']),
-            # dict(num_class=2, class_names=['motorcycle', 'bicycle']),
-            # dict(num_class=2, class_names=['pedestrian', 'traffic_cone']),
             dict(num_class=1, class_names=['Pedestrian']),
             dict(num_class=1, class_names=['Cyclist']),
             dict(num_class=1, class_names=['Car']),
         ],
         common_heads=dict(
-            reg=(2, 2), height=(1, 2), dim=(3, 2), rot=(2, 2), vel=(2, 2)),
+            # reg=(2, 2), height=(1, 2), dim=(3, 2), rot=(2, 2), vel=(2, 2)),
+            reg=(2, 2), height=(1, 2), dim=(3, 2), rot=(2, 2)),
         share_conv_channel=64,
         bbox_coder=dict(
             type='CenterPointBBoxCoder',
             post_center_range=post_center_range,
-            max_num=500,
+            max_num=100,
             score_threshold=0.1,
             out_size_factor=8,
             voxel_size=voxel_size[:2],
             pc_range=point_cloud_range[:2],
-            code_size=9),
+            code_size=7),
         separate_head=dict(
             type='SeparateHead', init_bias=-2.19, final_kernel=3),
         loss_cls=dict(type='mmdet.GaussianFocalLoss', reduction='mean'),
@@ -267,26 +261,28 @@ model = dict(
     # model training and testing settings
     train_cfg=dict(
         pts=dict(
-            grid_size=[1024, 1024, 40],
+            point_cloud_range=point_cloud_range,
+            grid_size=[752, 800, 40], #41, 800, 752]
             voxel_size=voxel_size,
             out_size_factor=8,
             dense_reg=1,
             gaussian_overlap=0.1,
             max_objs=500,
             min_radius=2,
-            code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2])),
+            code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])),
     test_cfg=dict(
         pts=dict(
+            point_cloud_range=point_cloud_range,
             post_center_limit_range=post_center_range,
             max_per_img=500,
             max_pool_nms=False,
             min_radius=[4, 12, 10, 1, 0.85, 0.175],
             score_threshold=0.1,
-            out_size_factor=8,
+            out_size_factor=4,
             voxel_size=voxel_size[:2],
             nms_type='rotate',
-            pre_max_size=1000,
-            post_max_size=83,
+            pre_max_size=4096, # TODO: These are ways higher in Yaziwel's implementation
+            post_max_size=512,  # TODO: These are ways higher in Yaziwel's implementation
             nms_thr=0.2)))
 
 ############# Scheduler #############
