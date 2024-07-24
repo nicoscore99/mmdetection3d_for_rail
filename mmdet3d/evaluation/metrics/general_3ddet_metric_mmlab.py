@@ -215,6 +215,9 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         evaluation_results_dict['precision'] = self.evaluator.compute_precision(iou_level=self.difficulty_levels,
                                                                                 class_accuracy_requirements=['easy', 'hard'])
 
+        evaluation_results_dict['recall'] = self.evaluator.compute_recall(iou_level=self.difficulty_levels,
+                                                                        class_accuracy_requirements=['easy', 'hard'])
+
         evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
                                                                                        class_accuracy_requirements=['easy', 'hard'],
                                                                                        class_idx=range(len(self.classes)))
@@ -464,6 +467,24 @@ class EvaluatorMetrics():
     @property
     def total_dt_instances(self) -> int:
         return sum([len(self._dt_annos_valid[key].bboxes_3d) for key in self._dt_annos_valid.keys()])
+
+    def get_unassigned_gt_instances(self, _gt_instances, _assign_result_gt_inds) -> torch.Tensor:
+
+        """
+        
+        Args:
+            _gt_instances (InstanceData): The ground truth instances.
+            _assign_result_gt_inds (torch.Tensor): The indices of the ground truth instances that are assigned to a detection.
+
+        Returns:
+            torch.Tensor: The indices of the ground truth instances that are not assigned to a detection.
+        
+        """
+        
+        gt_indices = torch.arange(1, len(_gt_instances) + 1)
+        indices_assigned_to_dt = _assign_result_gt_inds[_assign_result_gt_inds > 0]
+        gt_indices_unassigned = gt_indices[~torch.isin(gt_indices, indices_assigned_to_dt)]
+        return gt_indices_unassigned
     
     def val_batch_evaluation(self, 
                              iou_threshold: float) -> dict:
@@ -476,8 +497,9 @@ class EvaluatorMetrics():
         dt_labels = []
         dt_scores = []
         assigned_gt_inds = []
+        unassinged_gt_inds = []
         assigned_max_overlaps = []
-        assigned_labels = []     
+        assigned_labels = []   
         
         for i, key in enumerate(self._gt_annos_valid.keys()):
             
@@ -489,6 +511,7 @@ class EvaluatorMetrics():
             dt_labels.append(dt_instance.labels_3d)
             dt_scores.append(dt_instance.scores)
             assigned_gt_inds.append(assign_result.gt_inds)
+            unassinged_gt_inds.append(self.get_unassigned_gt_instances(_gt_instances=gt_instance, _assign_result_gt_inds=assign_result.gt_inds))
             assigned_max_overlaps.append(assign_result.max_overlaps)
             assigned_labels.append(assign_result.labels)        
 
@@ -499,6 +522,7 @@ class EvaluatorMetrics():
             'dt_labels': torch.cat(dt_labels),
             'confidence': torch.cat(dt_scores),
             'assigned_gt_inds': torch.cat(assigned_gt_inds),
+            'unassigned_gt_inds': torch.cat(unassinged_gt_inds),
             'assigned_max_overlaps': torch.cat(assigned_max_overlaps),
             'assigned_labels': torch.cat(assigned_labels)
         }
@@ -709,7 +733,7 @@ class EvaluatorMetrics():
                 _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
                 
                 tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-                _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
+                _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, y_score=score)
                 
                 class_dict[class_accuracy_requirement] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
 
@@ -735,7 +759,7 @@ class EvaluatorMetrics():
 
             class_dict = dict()
             tp_binary, score, y_true, y_pred  = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
-            precision, recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, probas_pred=score)
+            precision, recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, y_score=score)
             class_dict['all_classes'] = {
                 'precision': precision,
                 'recall': recall,
@@ -934,6 +958,50 @@ class EvaluatorMetrics():
             map_level_dict[level] = class_dict
 
         return map_level_dict
+
+    def compute_recall(self,
+                       iou_level: Union[float, List[float]],
+                       class_accuracy_requirements: str) -> float:
+        
+        """
+        
+        This function computes the recall score.
+        Recall = TP / (TP + FN)
+
+        """
+
+        if isinstance(iou_level, float):
+            iou_level = [iou_level]
+
+        if isinstance(class_accuracy_requirements, str):
+            class_accuracy_requirements = [class_accuracy_requirements]
+
+        iou_level_dict = dict()
+        for level in iou_level:
+                
+                class_dict = dict()
+                for class_accuracy_requirement in class_accuracy_requirements:
+                    if not level in self.threshold_specific_results_dict.keys():
+                        self.val_batch_evaluation(level)
+    
+                    _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
+                    
+                    tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
+                    
+                    num_tp = tp_binary.sum().item()
+                    num_fn = len(_threshold_specific_results_dict['unassigned_gt_inds'])
+ 
+                    if num_tp + num_fn == 0:
+                        recall = 0.0
+                    else:
+                        recall = num_tp / (num_tp + num_fn)
+
+                    class_dict[class_accuracy_requirement] = round(recall, 3)                    
+    
+                iou_level_dict[level] = class_dict
+
+        return iou_level_dict
+
             
     def is_of_type_kitti(self, _lidar_path: 'str') -> bool:
         """
