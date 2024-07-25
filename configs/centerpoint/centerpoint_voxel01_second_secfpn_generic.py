@@ -22,14 +22,14 @@ custom_hooks = [
          init_kwargs={
              'entity': 'railsensing',
              'project': 'centerpoint',
-             'name': 'rtx4090_cp_run1_osdar23_3class',
+             'name': 'rtx4090_cp_run3_mix_osdar_kitti_3class',
              })
 ]
 
 ############# Generic variables #############
 
 class_names = ['Pedestrian', 'Cyclist', 'Car']
-point_cloud_range = [5.0, -70, -3.0, 70, 80.2, 3.0]
+point_cloud_range = [5.0, -40, -3.0, 50, 80.2, 3.0]
 point_cloud_range_inference = point_cloud_range
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
@@ -79,6 +79,76 @@ generic_eval_pipeline = [
     dict(type='Pack3DDetInputs', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 
+############# Kitti Specific Config #############
+
+kitti_data_root = 'data/kitti/'
+kitti_dataset_type = 'KittiDataset'
+
+kitti_db_sampler = dict(
+    data_root=kitti_data_root,
+    info_path=kitti_data_root + 'kitti_dbinfos_train.pkl',
+    rate=1.0,
+    prepare=dict(
+        filter_by_difficulty=[-1],
+        filter_by_min_points=dict(Car=20, Pedestrian=20, Cyclist=20)),
+    classes=class_names,
+    sample_groups=dict(Car=10, Pedestrian=10, Cyclist=10),
+    points_loader=points_loader,
+    backend_args=None)
+    
+kitti_train_pipeline = [
+    points_loader,
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(type='ObjectSample', db_sampler=kitti_db_sampler),
+    dict(
+        type='ObjectNoise',
+        num_try=100,
+        translation_std=[1.0, 1.0, 0.5],
+        global_rot_range=[0.0, 0.0],
+        rot_range=[-0.78539816, 0.78539816]),
+    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
+    dict(
+        type='GlobalRotScaleTrans',
+        rot_range=[-0.78539816, 0.78539816],
+        scale_ratio_range=[0.95, 1.05]),
+    dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
+    dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
+    dict(type='PointShuffle'),
+    dict(
+        type='Pack3DDetInputs',
+        keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
+]
+
+kitti_train_dataset = dict(
+    type=kitti_dataset_type,
+    data_root=kitti_data_root,
+    ann_file= 'kitti_infos_train.pkl',
+    data_prefix=dict(pts='training/velodyne_reduced'),
+    pipeline=kitti_train_pipeline,
+    modality=input_modality,
+    test_mode=False,
+    metainfo=metainfo,
+    backend_args=None)
+
+kitti_val_dataset = dict(
+    type=kitti_dataset_type,
+    indices=0.1,
+    data_root=kitti_data_root,
+    data_prefix=dict(pts='training/velodyne_reduced'),
+    ann_file='kitti_infos_val.pkl',
+    pipeline=generic_eval_pipeline,
+    modality=input_modality,
+    test_mode=True,
+    metainfo=metainfo,
+    backend_args=None)
+
+kitti_test_dataset = kitti_val_dataset
+
+kitti_repeat_dataset = dict(
+    type='RepeatDataset',
+    times=1,
+    dataset=kitti_train_dataset)
+
 ############# OSDAR23 Specific Config #############
 
 osdar23_data_root = 'data/osdar23_3class/'
@@ -126,7 +196,7 @@ osdar23_train_dataset = dict(
 
 repeat_osdar23_train_dataset = dict(
     type='RepeatDataset',
-    times=1,
+    times=2,
     dataset=osdar23_train_dataset)
 
 osdar23_val_dataset = dict(
@@ -148,7 +218,7 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[repeat_osdar23_train_dataset],
+        datasets=[repeat_osdar23_train_dataset, kitti_repeat_dataset]
     )
 )
 
@@ -160,7 +230,7 @@ val_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[osdar23_val_dataset],
+        datasets=[osdar23_val_dataset, kitti_val_dataset]
     )
 )
 
@@ -170,7 +240,7 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range_inference,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run1_osdar23_3class/evaluation',
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run3_mix_osdar_kitti_3class/evaluation',
     save_graphics = False,
     save_evaluation_results = False,
     save_random_viz = False,
@@ -296,7 +366,7 @@ lr = 1e-4
 # This schedule is mainly used by models on nuScenes dataset
 # max_norm=10 is better for SECOND
 
-epoch_num = 20
+epoch_num = 40
 
 optim_wrapper = dict(
     type='OptimWrapper',
@@ -364,7 +434,7 @@ default_hooks = dict(
     timer=dict(type='IterTimerHook'),
     logger=dict(type='LoggerHook', interval=50),
     param_scheduler=dict(type='ParamSchedulerHook'),
-    checkpoint=dict(type='CheckpointHook', interval=-1),
+    checkpoint=dict(type='CheckpointHook', interval=4),
     sampler_seed=dict(type='DistSamplerSeedHook'),
     visualization=dict(type='Det3DVisualizationHook'))
 
@@ -381,4 +451,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run1_osdar23_3class'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run3_mix_osdar_kitti_3class'
