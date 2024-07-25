@@ -3,16 +3,15 @@ import tempfile
 import os
 from os import path as osp
 from typing import Dict, List, Optional, Sequence, Tuple, Union
-from sklearn import metrics
 from abc import ABC, abstractmethod
 import json
 
-import sklearn.metrics as sk_metrics
 import matplotlib.pyplot as plt
 import pprint
 import bbox
 import torch
 import pandas as pd
+from sklearn import metrics as sk_metrics
 
 import mmengine
 import numpy as np
@@ -202,36 +201,28 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         ######## Evaluation ########
         
-        evaluation_results_dict['mAP'] = self.evaluator.sklearn_mean_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                             class_accuracy_requirements=['easy', 'hard'])
+        evaluation_results_dict['ap'] = self.evaluator.options_frame_metrics(method='ap', 
+                                                                             iou_level=self.difficulty_levels,
+                                                                             class_accuracy_requirements=['easy'])
         
-        evaluation_results_dict['mAP40'] = self.evaluator.mean_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                       class_accuracy_requirements=['easy', 'hard'])
+        evaluation_results_dict['precision'] = self.evaluator.options_frame_metrics(method='precision',
+                                                                                    iou_level=self.difficulty_levels,
+                                                                                    class_accuracy_requirements=['easy'])
 
-        evaluation_results_dict['F1'] = self.evaluator.sklearn_f1_score(iou_level=self.difficulty_levels,
-                                                                        class_accuracy_requirements=['easy', 'hard'])
-        
+        evaluation_results_dict['recall'] = self.evaluator.options_frame_metrics(method='recall',
+                                                                                    iou_level=self.difficulty_levels,
+                                                                                    class_accuracy_requirements=['easy'])
 
-        evaluation_results_dict['precision'] = self.evaluator.compute_precision(iou_level=self.difficulty_levels,
-                                                                                class_accuracy_requirements=['easy', 'hard'])
-
-        evaluation_results_dict['recall'] = self.evaluator.compute_recall(iou_level=self.difficulty_levels,
-                                                                        class_accuracy_requirements=['easy', 'hard'])
-
-        evaluation_results_dict['AP'] = self.evaluator.sklearn_average_precision_score(iou_level=self.difficulty_levels,
-                                                                                       class_accuracy_requirements=['easy', 'hard'],
-                                                                                       class_idx=range(len(self.classes)))
-
-        curves_dict['prec'] = self.evaluator.precision_recall_curve(iou_level=0.5)
-        curves_dict['roc'] = self.evaluator.roc_curve(iou_level=0.5)
-        curves_dict['cm'] = self.evaluator.confusion_matrix(iou_level=0.5)
+        curves_dict['prec'] = self.evaluator.options_frame_curves(method='precision_recall_curve', iou_level=0.3)
+        curves_dict['roc'] = self.evaluator.options_frame_curves(method='roc_curve', iou_level=0.3)
+        curves_dict['cm'] = self.evaluator.options_frame_curves(method='confusion_matrix', iou_level=0.3)
 
         ######## Visualization ########
 
         if self.save_graphics:
-            self.save_plot(plot=self.evaluator.precision_recall_plot(iou_level=0.5), filename = 'precision_recall_plot_pointpillars_kitti.png')
-            self.save_plot(plot=self.evaluator.roc_plot(iou_level=0.5), filename = 'roc_plot_pointpillars_kitti.png')
-            self.save_plot(plot=self.evaluator.confusion_matrix_plot(iou_level=0.5), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.options_frame_plots(method='precision_recall_plot', iou_level=0.3), filename = 'precision_recall_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.options_frame_plots(method='roc_plot', iou_level=0.3), filename = 'roc_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.options_frame_plots(method='confusion_matrix_plot', iou_level=0.3), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
 
         ####### Saving the evaluation results #######
 
@@ -242,7 +233,6 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                 json.dump(evaluation_results_dict, f, indent=4)
 
         ######## Visualization of random keys ########
-
         self.visualize_random_keys(_gt_annos=gt_annos_valid, _dt_annos=dt_annos_valid, num_keys=self.num_random_keys_to_be_visualized)
             
         return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
@@ -451,6 +441,24 @@ class EvaluatorMetrics():
             'easy': self.tp_detection,
             'hard': self.tp_detection_and_label
         }
+        
+        self.metrics_method_map = {
+            'ap': self.ap,
+            'precision': self.precision,
+            'recall': self.recall
+        }
+        
+        self.curves_method_map = {
+            'precision_recall_curve': self.precision_recall_curve,
+            'roc_curve': self.roc_curve,
+            'confusion_matrix': self.confusion_matrix
+        }
+        
+        self.plots_method_map = {
+            'precision_recall_plot': self.precision_recall_plot,
+            'roc_plot': self.roc_plot,
+            'confusion_matrix_plot': self.confusion_matrix_plot
+        }        
 
         self._gt_annos_valid = gt_annos_valid
         self._dt_annos_valid = dt_annos_valid
@@ -477,14 +485,13 @@ class EvaluatorMetrics():
             _assign_result_gt_inds (torch.Tensor): The indices of the ground truth instances that are assigned to a detection.
 
         Returns:
-            torch.Tensor: The indices of the ground truth instances that are not assigned to a detection.
-        
+            torch.Tensor: Binary mask, 1 if the ground truth bounding box was assigned a detection, 0 if not.
         """
         
-        gt_indices = torch.arange(1, len(_gt_instances) + 1)
+        gt_indices = torch.arange(1, len(_gt_instances.bboxes_3d) + 1)
         indices_assigned_to_dt = _assign_result_gt_inds[_assign_result_gt_inds > 0]
-        gt_indices_unassigned = gt_indices[~torch.isin(gt_indices, indices_assigned_to_dt)]
-        return gt_indices_unassigned
+        gt_instance_mask = torch.isin(gt_indices, indices_assigned_to_dt)
+        return gt_instance_mask
     
     def val_batch_evaluation(self, 
                              iou_threshold: float) -> dict:
@@ -494,55 +501,66 @@ class EvaluatorMetrics():
                                         min_pos_iou=iou_threshold,
                                         iou_calculator=dict(type=self._iou_calculator, coordinate='lidar'))
         
-        dt_labels = []
-        dt_scores = []
-        assigned_gt_inds = []
-        unassinged_gt_inds = []
-        assigned_max_overlaps = []
-        assigned_labels = []   
+        dt_labels = []                  # Labels of the detections
+        dt_scores = []                  # Confidence scores of the detections
+        dt_assigned_gt_indices = []     # For each detection, the index of the assigned ground truth instance
+        dt_max_overlaps = []            # For each detection, the maximum overlap with a ground truth instance
+        dt_assigned_labels = []         # For each detection, the assigned label
+        
+        gt_labels = []                  # Labels of the ground truth instances
+        gt_assigned_or_not_binary = []  # For each ground truth instance, if it is assigned to a detection or not (1 for assigned, 0 for not assigned)    
+
         
         for i, key in enumerate(self._gt_annos_valid.keys()):
             
             gt_instance = self._gt_annos_valid[key]
             dt_instance = self._dt_annos_valid[key]
             assign_result = iou_assigner.assign(pred_instances=dt_instance, gt_instances=gt_instance, force_single_assignement=self.force_single_assignement)
-            # Maybe something is not fully right here: Does it automatically mean that the labels correspond to the gt_labels?
 
             dt_labels.append(dt_instance.labels_3d)
             dt_scores.append(dt_instance.scores)
-            assigned_gt_inds.append(assign_result.gt_inds)
-            unassinged_gt_inds.append(self.get_unassigned_gt_instances(_gt_instances=gt_instance, _assign_result_gt_inds=assign_result.gt_inds))
-            assigned_max_overlaps.append(assign_result.max_overlaps)
-            assigned_labels.append(assign_result.labels)        
+            dt_assigned_gt_indices.append(assign_result.gt_inds) # For each detection, the index of the assigned ground truth instance
+            dt_max_overlaps.append(assign_result.max_overlaps)
+            dt_assigned_labels.append(assign_result.labels)
+            
+            gt_labels.append(gt_instance.labels_3d)
+            gt_assigned_or_not_binary.append(self.get_unassigned_gt_instances(_gt_instances=gt_instance, _assign_result_gt_inds=assign_result.gt_inds))
 
         # assert that all out the lists have the same length
-        assert len(dt_labels) == len(dt_scores) == len(assigned_gt_inds) == len(assigned_max_overlaps) == len(assigned_labels)
-
+        assert len(dt_labels) == len(dt_scores) == len(dt_assigned_gt_indices) == len(dt_max_overlaps) == len(dt_assigned_labels)
+        assert len(gt_labels) == len(gt_assigned_or_not_binary)
+        
         threshold_specific_results = {
             'dt_labels': torch.cat(dt_labels),
-            'confidence': torch.cat(dt_scores),
-            'assigned_gt_inds': torch.cat(assigned_gt_inds),
-            'unassigned_gt_inds': torch.cat(unassinged_gt_inds),
-            'assigned_max_overlaps': torch.cat(assigned_max_overlaps),
-            'assigned_labels': torch.cat(assigned_labels)
+            'dt_scores': torch.cat(dt_scores),
+            'dt_assigned_gt_indices': torch.cat(dt_assigned_gt_indices),
+            'dt_max_overlaps': torch.cat(dt_max_overlaps),
+            'dt_assigned_labels': torch.cat(dt_assigned_labels),
+            'gt_labels': torch.cat(gt_labels),
+            'gt_assigned_or_not_binary': torch.cat(gt_assigned_or_not_binary)            
         }
                             
         self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
-
 
     def filter_for_prediction_class(self,
                                     filter_dict: dict,
                                     class_idx: int) -> dict:
         
-        citerion = filter_dict['dt_labels'] == class_idx
+        dt_criterion = filter_dict['dt_labels'] == class_idx
+        gt_criterion = filter_dict['gt_labels'] == class_idx
 
         filtered_dict = {
-            'dt_labels': filter_dict['dt_labels'][citerion],
-            'confidence': filter_dict['confidence'][citerion],
-            'assigned_gt_inds': filter_dict['assigned_gt_inds'][citerion],
-            'assigned_max_overlaps': filter_dict['assigned_max_overlaps'][citerion],
-            'assigned_labels': filter_dict['assigned_labels'][citerion]
+            'dt_labels': filter_dict['dt_labels'][dt_criterion],
+            'dt_scores': filter_dict['dt_scores'][dt_criterion],
+            'dt_assigned_gt_indices': filter_dict['dt_assigned_gt_indices'][dt_criterion],
+            'dt_max_overlaps': filter_dict['dt_max_overlaps'][dt_criterion],
+            'dt_assigned_labels': filter_dict['dt_assigned_labels'][dt_criterion],
+            'gt_labels': filter_dict['gt_labels'][gt_criterion],
+            'gt_assigned_or_not_binary': filter_dict['gt_assigned_or_not_binary'][gt_criterion]
         }
+        
+        assert len(filtered_dict['dt_labels']) == len(filtered_dict['dt_scores']) == len(filtered_dict['dt_assigned_gt_indices']) == len(filtered_dict['dt_max_overlaps']) == len(filtered_dict['dt_assigned_labels'])
+        assert len(filtered_dict['gt_labels']) == len(filtered_dict['gt_assigned_or_not_binary'])
 
         return filtered_dict
 
@@ -552,21 +570,17 @@ class EvaluatorMetrics():
         
         Args:
             filtered_dict (dict): A dict that contains the results that were, if this is wanted, already filtered for detection labels.
-
+            
         Returns:
             tp_binary (torch.Tensor): A tensor that indicates if a detection is a true positive or not.
-            score (torch.Tensor): A tensor that contains the confidence scores of the detections.
-            y_true (torch.Tensor): A tensor that contains the true labels of the detections.
-            y_pred (torch.Tensor): A tensor that contains the predicted labels of the detections.
-
+            
         ***Attention***: True positives are defined here as detections, that have a valid, corresponding bounding box AND the correct label.
         
-        """
+        """                   
         
-        tp_criterion = filtered_dict['dt_labels'] == filtered_dict['assigned_labels']
+        tp_criterion = filtered_dict['dt_labels'] == filtered_dict['dt_assigned_labels']
         tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
-        score = filtered_dict['confidence']
-        return tp_binary, score, filtered_dict['assigned_labels'], filtered_dict['dt_labels']
+        return tp_binary
 
     def tp_detection(self,
                      filtered_dict: dict) -> torch.Tensor:
@@ -587,309 +601,32 @@ class EvaluatorMetrics():
             
         """
         
-        tp_criterion = filtered_dict['assigned_gt_inds'] > 0
+        tp_criterion = filtered_dict['dt_assigned_gt_indices'] > 0
         tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
-        score = filtered_dict['confidence']
-        return tp_binary, score, filtered_dict['assigned_labels'], filtered_dict['dt_labels']  
-
-    def sklearn_average_precision_score(self,
-                                        iou_level: Union[float, List[float]], 
-                                        class_accuracy_requirements: Union[str, List[str]] = 'easy',
-                                        class_idx: Union[int, List[int]] = []):
-
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_idx, int):
-            class_idx = [class_idx]
-
-        if isinstance(class_accuracy_requirements, str):
-            class_accuracy_requirements = [class_accuracy_requirements]
-
-        # Assure that the class_idx list is not empty
-        if not class_idx:
-            raise ValueError('class_idx should not be empty. Call property sklearn_mean_average_precision_score instead.')
-        
-        # Assure that the class_accuracy_requirement list is not empty
-        if not class_accuracy_requirements:
-            raise ValueError('class_accuracy_requirement should not be empty.')
-        
-        # Assure that the class_accuracy_requirement list contains one of the possible values
-        if not all([class_accuracy_requirement in self.class_accuracy_requirement_possible for class_accuracy_requirement in class_accuracy_requirements]):
-            raise ValueError('class_accuracy_requirement should only contain the possible values: ', self.class_accuracy_requirement_possible)
-
-        # Assure that the class_idx list contains only valid indices
-        if not all([cls_idx in range(len(self._classes)) for cls_idx in class_idx]):
-            raise ValueError('class_idx should only contain valid indices for the classes.')
-
-        level_dict = dict()
-        for level in iou_level:
-            if not level in self.threshold_specific_results_dict.keys():
-                self.val_batch_evaluation(level)
-            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            class_dict = dict()
-            for class_accuracy_requirement in class_accuracy_requirements:
-                
-                for cls_idx in class_idx:
-                    _class_filtered_dict = self.filter_for_prediction_class(filter_dict=_threshold_specific_results_dict, class_idx=cls_idx)
-                    tp_binary, score, y_true, y_pred  = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_class_filtered_dict)
-                    if tp_binary.nelement() > 0 and score.nelement() > 0:
-                        class_dict[self._classes[cls_idx]] = round(sk_metrics.average_precision_score(y_true=tp_binary, y_score=score), 3)
-                    else:
-                        class_dict[self._classes[cls_idx]] = 0.0
-            
-            level_dict[level] = class_dict
-
-        return level_dict                    
-
-    def sklearn_mean_average_precision_score(self,
-                                             iou_level: Union[float, List[float]],
-                                             class_accuracy_requirements: Union[str, List[str]] = 'easy'):
-        
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_accuracy_requirements, str):
-            class_accuracy_requirements = [class_accuracy_requirements]
-
-        level_dict = dict()
-        for level in iou_level:
-            if not level in self.threshold_specific_results_dict.keys():
-                self.val_batch_evaluation(level)
-
-            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            class_dict = dict()
-            for class_accuracy_requirement in class_accuracy_requirements:
-                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-
-                if tp_binary.nelement() > 0 and score.nelement() > 0:
-                    class_dict[class_accuracy_requirement] = round(sk_metrics.average_precision_score(y_true=tp_binary, y_score=score), 3)
-                else:
-                    class_dict[class_accuracy_requirement] = 0.0                
-            level_dict[level] = class_dict
-
-        return level_dict
-    
-    def sklearn_f1_score(self,
-                        iou_level: Union[float, List[float]],
-                        class_accuracy_requirements: Union[str, List[str]] = 'easy'):
-        
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_accuracy_requirements, str):
-            class_accuracy_requirements = [class_accuracy_requirements]
-
-        level_dict = dict()
-        for level in iou_level:
-            if not level in self.threshold_specific_results_dict.keys():
-                self.val_batch_evaluation(level)
-
-            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            class_dict = dict()
-            for class_accuracy_requirement in class_accuracy_requirements:
-                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-                
-                if tp_binary.nelement() > 0 and score.nelement() > 0:
-                    class_dict[class_accuracy_requirement] = round(sk_metrics.f1_score(y_true=y_true, y_pred=y_pred, average='micro'), 3)
-                else:
-                    class_dict[class_accuracy_requirement] = 0.0
-
-            level_dict[level] = class_dict
-
-        return level_dict
-    
-    def mean_average_precision_score(self,
-                                    iou_level: Union[float, List[float]],
-                                    class_accuracy_requirements: Union[str, List[str]] = 'easy'):
-        """ 
-            This function computes the mean average precision score with the traditional method without using sklearn.
-
-            Args:
-                iou_level (Union[float, List[float]]): The IoU levels to be evaluated.
-                class_accuracy_requirements (Union[str, List[str]]): The class accuracy requirements to be evaluated. Defaults to 'easy'.
-
-            Returns:
-                Dict: A dictionary that contains the mean average precision scores for the different IoU levels and class accuracy requirements.
-
-        """
-        
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_accuracy_requirements, str):
-            class_accuracy_requirements = [class_accuracy_requirements]
-
-        map_level_dict = dict()
-        for level in iou_level:
-
-            class_dict = dict()
-            for class_accuracy_requirement in class_accuracy_requirements:
-                if not level in self.threshold_specific_results_dict.keys():
-                    self.val_batch_evaluation(level)
-                _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-                
-                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-                _precision, _recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, y_score=score)
-                
-                class_dict[class_accuracy_requirement] = round(self.compute_ap(precision=_precision, recall=_recall, n=40), 3)
-
-            map_level_dict[level] = class_dict
-
-        return map_level_dict
-    
-    def precision_recall_curve(self,
-                               iou_level: Union[float, List[float]],
-                               class_idx: Union[int, List[int]] = []):
-        
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_idx, int):
-            class_idx = [class_idx]
-        
-        level_dict = dict()
-        for level in iou_level:
-            if not level in self.threshold_specific_results_dict.keys():
-                self.val_batch_evaluation(level)
-            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            class_dict = dict()
-            tp_binary, score, y_true, y_pred  = self.tp_detection_and_label(filtered_dict=_threshold_specific_results_dict)
-            precision, recall, _ = sk_metrics.precision_recall_curve(y_true=tp_binary, y_score=score)
-            class_dict['all_classes'] = {
-                'precision': precision,
-                'recall': recall,
-                'y_true': tp_binary,
-                'y_probas': score,
-                'labels': self._classes
-            }
-
-            level_dict[level] = class_dict
-
-        return level_dict
-        
-    def precision_recall_plot(self,
-                              iou_level: float):
-        
-        level_dict = self.precision_recall_curve(iou_level=iou_level)
-        precision, recall = level_dict[iou_level]['all_classes']['precision'], level_dict[iou_level]['all_classes']['recall']
-        disp = sk_metrics.PrecisionRecallDisplay(precision=precision, recall=recall, estimator_name='Precision-Recall Curve')
-        return disp.plot()
-
-    def roc_curve(self,
-                  iou_level: Union[float, List[float]],
-                  class_idx: Union[int, List[int]] = []):
-        
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_idx, int):
-            class_idx = [class_idx]
-
-        level_dict = dict()
-        for level in iou_level:
-            if not level in self.threshold_specific_results_dict.keys():
-                self.val_batch_evaluation(level)
-            _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-
-            class_dict = dict()
-
-            tp_binary, score, y_true, y_pred  = self.tp_detection(filtered_dict=_threshold_specific_results_dict)
-            fpr, tpr, _ = sk_metrics.roc_curve(y_true=tp_binary, y_score=score)
-            class_dict['all_classes'] = {
-                'fpr': fpr,
-                'tpr': tpr,
-                'y_true': tp_binary,
-                'y_probas': score,
-                'labels': self._classes
-            }
-
-            level_dict[level] = class_dict
-
-        return level_dict
-
-    def roc_plot(self,
-                 iou_level: float):
-        
-        level_dict = self.roc_curve(iou_level=iou_level)
-        fpr, tpr = level_dict[iou_level]['all_classes']['fpr'], level_dict[iou_level]['all_classes']['tpr']
-        roc_auc = sk_metrics.auc(fpr, tpr)
-        disp = sk_metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, estimator_name='ROC Curve', roc_auc=roc_auc)
-        return disp.plot()
-
-    def confusion_matrix(self,
-                         iou_level: float):
-        
-        if not iou_level in self.threshold_specific_results_dict.keys():
-            self.val_batch_evaluation(iou_level)
-    
-        relevant_inds = self.threshold_specific_results_dict[iou_level]['assigned_labels'] != -1
-
-        # print("Debug: assigned_gt_inds: ", self.threshold_specific_results_dict[iou_level]['assigned_gt_inds'])
-        # print("Debug: relevant_inds: ", relevant_inds)
-
-        _y_true = self.threshold_specific_results_dict[iou_level]['assigned_labels'][relevant_inds]
-
-        # print("Debug: assigned_labels: ", self.threshold_specific_results_dict[iou_level]['assigned_labels'])
-        # print("Debug: y_true: ", _y_true)
-
-        _y_pred = self.threshold_specific_results_dict[iou_level]['dt_labels'][relevant_inds]
-
-        # print("Debug: dt_labels: ", self.threshold_specific_results_dict[iou_level]['dt_labels'])
-        # print("Debug: y_pred: ", _y_pred)
-
-        _labels = range(len(self._classes))
-
-        confusion_matrix = sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=_labels)
-
-        confusion_matrix_dict ={
-            'y_true': _y_true,
-            'y_pred': _y_pred,
-            'labels': _labels,
-            'classes': self._classes,
-            'cm': confusion_matrix
-        }
-
-        level_dict = dict()
-        level_dict[iou_level] = confusion_matrix_dict
-        return level_dict
-
-    def confusion_matrix_plot(self,
-                              iou_level: float):
-
-        cm_dict = self.confusion_matrix(iou_level)
-        cm = cm_dict[iou_level]['cm']
-        disp = sk_metrics.ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self._classes)
-        return disp.plot(include_values=True, cmap='viridis')
+        return tp_binary
     
     def compute_ap(self,
                    recall, precision, n=40):
         """
-        # Arguments
-            recall:    The recall curve (list).
-            precision: The precision curve (list).
-        # Returns
-            The average precision as computed in py-faster-rcnn.
+        
+        Compute the average precision score.
+        
+        Args:
+            recall (torch.Tensor): The recall values.
+            precision (torch.Tensor): The precision values.
+            n (int): The number of recall levels to be evaluated. Defaults to 40.
+            
+        Returns:
+            float: The average precision score.
+        
         """
         # correct AP calculation
         # first append sentinel values at the end
         mrec = np.concatenate(([0.0], recall, [1.0]))
         mpre = np.concatenate(([0.0], precision, [0.0]))
-
-        # # # compute the precision envelope
-        # for i in range(mpre.size - 1, 0, -1):
-        #     mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-
-        # # to calculate area under PR curve, look for points
-        # # where X axis (recall) changes value
-        # i = np.where(mrec[1:] != mrec[:-1])[0]
-
-        # # and sum (\Delta recall) * prec
-        # ap_all = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+        
+        recall = recall.numpy()
+        precision = precision.numpy()
         
         ap_n = 0.
         if not isinstance(n, int):
@@ -907,111 +644,288 @@ class EvaluatorMetrics():
             
         return ap_n
     
-    def precision(self, _tp_binary: torch.Tensor) -> float:
-
-        tp = _tp_binary.sum().item()
-
-        if len(_tp_binary) == 0:
-            print("Warning: Calculating precision with an empty tensor. Set to 0.0 to prevent by zero division.")
+    def generate_precision_recall_curve(self,
+                                        _dt_tp_binary: torch.Tensor,
+                                        _dt_confidence: torch.Tensor,
+                                        _gt_labels: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        
+        """
+        
+        Generate the precision-recall curve.
+        
+        Args:
+            _dt_tp_binary (torch.Tensor): A tensor that indicates if a detection is a true positive or not.
+            _dt_confidence (torch.Tensor): A tensor that contains the confidence scores of the detections.
+            _gt_labels (torch.Tensor): A tensor that contains the true labels of the detections.
+            
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: The precision and recall values.
+        
+        """
+        
+        # TODO: Are we sure this is ordered by confidence?
+        # Sort the detections by confidence
+        sorted_indices = torch.argsort(_dt_confidence, descending=True)
+        tp_binary = _dt_tp_binary[sorted_indices]
+        fp_binary = torch.logical_not(tp_binary)
+        
+        acc_tp = torch.cumsum(tp_binary, dim=0)
+        acc_fp = torch.cumsum(fp_binary, dim=0)
+        gt_instances_lengths = len(_gt_labels)
+        num_gt = torch.tensor(gt_instances_lengths).sum()
+        
+        precision_curve = acc_tp / (acc_tp + acc_fp)
+        recall_curve = acc_tp / num_gt
+        
+        return precision_curve, recall_curve
+    
+    ######### Methods metrics #########
+    
+    def ap(self,
+        level: float,
+        class_accuracy_requirement: str,
+        class_idx: Optional[int] = None) -> float:
+        
+        """
+        
+        Average precision score.
+        
+        Args:
+            level (float): The IoU level.
+            class_accuracy_requirement (str): The class accuracy requirement.
+            class_idx (Optional[int]): The class index. Defaults to None.
+            
+        Returns:
+            float: The average precision score.
+        
+        """
+        
+        if not level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(level)
+            
+        results_dict = self.threshold_specific_results_dict[level]
+        
+        if class_idx is not None:
+            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+        
+        dt_tp_binary = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=results_dict)
+        
+        # prevent case of no detections
+        if dt_tp_binary.nelement() == 0 or results_dict['dt_labels'].nelement() == 0 or results_dict['gt_labels'].nelement() == 0:
             return 0.0
         
-        precision = tp / len(_tp_binary) 
-        return precision
+        precision, recall = self.generate_precision_recall_curve(_dt_tp_binary=dt_tp_binary, _dt_confidence=results_dict['dt_scores'], _gt_labels=results_dict['gt_labels'])
+        
+        ap = self.compute_ap(precision=precision, recall=recall)
+        return round(ap, 3)
     
-    def compute_precision(self,
-                            iou_level: Union[float, List[float]],
-                        class_accuracy_requirements: Union[str, List[str]] = 'easy'):
-        """ 
-            This function computes the average precision score with the traditional method without using sklearn.
-
-            Args:
-                iou_level (Union[float, List[float]]): The IoU levels to be evaluated.
-                class_accuracy_requirements (Union[str, List[str]]): The class accuracy requirements to be evaluated. Defaults to 'easy'.
-
-            Returns:
-                Dict: A dictionary that contains the mean average precision scores for the different IoU levels and class accuracy requirements.
-
+    def precision(self,
+                    level: float,
+                    class_accuracy_requirement: str,
+                    class_idx: Optional[int] = None) -> float:
+        
         """
+        
+        Precision score.
+        
+        Args:
+            level (float): The IoU level.
+            class_accuracy_requirement (str): The class accuracy requirement.
+            class_idx (Optional[int]): The class index. Defaults to None.
+            
+        Returns:    
+            float: The precision score.
+        
+        """
+        
+        if not level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(level)
+            
+        results_dict = self.threshold_specific_results_dict[level]
+        
+        if class_idx is not None:
+            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+            
+        dt_tp_binary = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=results_dict)
+        
+        # prevent case of no detections
+        if dt_tp_binary.nelement() == 0 or results_dict['dt_labels'].nelement() == 0:
+            return 0.0
+        
+        tp = dt_tp_binary.sum().item()
+        fp = len(results_dict['dt_labels']) - tp
+        precision = tp / (tp + fp)
+        
+        return round(precision, 3)
+    
+    def recall(self,
+                level: float,
+                class_accuracy_requirement: str,
+                class_idx: Optional[int] = None) -> float:
+        
+        """
+        
+        Recall score.
+        
+        Args:
+            level (float): The IoU level.
+            class_accuracy_requirement (str): The class accuracy requirement.
+            class_idx (Optional[int]): The class index. Defaults to None.
+            
+        Returns:
+            float: The recall score.
+            
+        """
+        
+        if not level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(level)
+            
+        results_dict = self.threshold_specific_results_dict[level]
+        
+        if class_idx is not None:
+            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+            
+        dt_tp_binary = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=results_dict)
+        
+        # prevent case of no detections
+        if dt_tp_binary.nelement() == 0 or results_dict['gt_labels'].nelement() == 0:
+            return 0.0
+        
+        tp = dt_tp_binary.sum().item()
+        fn = len(results_dict['gt_labels']) - tp
+        recall = tp / (tp + fn)
+        
+        return round(recall, 3)
+    
+    ######### Methods visuals #########
+    
+    def precision_recall_plot(self,
+                              iou_level: float):
+    
+        _dict = self.precision_recall_curve(iou_level)
+        precision = _dict['precision']
+        recall = _dict['recall']
+      
+        disp = sk_metrics.PrecisionRecallDisplay(precision=precision, recall=recall, estimator_name='Precision-Recall Curve')
+        return disp.plot()
+    
+    def precision_recall_curve(self,
+                                iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = self.threshold_specific_results_dict[iou_level]
+        dt_tp_binary = self.tp_detection_and_label(filtered_dict=results_dict)
+        precision, recall = self.generate_precision_recall_curve(_dt_tp_binary=dt_tp_binary, _dt_confidence=results_dict['dt_scores'], _gt_labels=results_dict['gt_labels'])
+        
+        return {'precision': precision, 'recall': recall}
+
+    def roc_curve(self,
+                  iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = self.threshold_specific_results_dict[iou_level]
+        dt_tp_binary = self.tp_detection(filtered_dict=results_dict)
+        fpr, tpr, _ = sk_metrics.roc_curve(y_true=dt_tp_binary, y_score=results_dict['dt_scores'])
+        return {'fpr': fpr, 'tpr': tpr}
+
+    def roc_plot(self,
+                 iou_level: float):
+        
+        _dict = self.roc_curve(iou_level)
+        fpr = _dict['fpr']
+        tpr = _dict['tpr']
+        roc_auc = sk_metrics.auc(fpr, tpr)
+        disp = sk_metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, estimator_name='ROC Curve', roc_auc=roc_auc)
+        return disp.plot()
+    
+    def confusion_matrix(self,
+                         iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = self.threshold_specific_results_dict[iou_level]
+        
+        relevant_inds = results_dict['dt_assigned_labels'] != -1
+        _y_true = results_dict['dt_labels'][relevant_inds]
+        _y_pred = results_dict['dt_assigned_labels'][relevant_inds]
+        _labels = range(len(self._classes))
+        
+        confusion_matrix = sk_metrics.confusion_matrix(y_true=_y_true, y_pred=_y_pred, labels=_labels)
+        
+        return {'cm': confusion_matrix}
+
+    def confusion_matrix_plot(self,
+                                iou_level: float):
+            
+        _dict = self.confusion_matrix(iou_level)
+        cm = _dict['cm']
+        disp = sk_metrics.ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=self._classes)
+        return disp.plot(include_values=True, cmap='viridis')
+
+    
+    ######### Option Frames #########
+    
+    def options_frame_metrics(self,
+        method: str,
+        iou_level: Union[float, List[float]],
+        class_accuracy_requirements: Union[str, List[str]] = 'easy',
+        class_idx: Union[int, List[int]] = []):
         
         if isinstance(iou_level, float):
             iou_level = [iou_level]
-
+            
+        if isinstance(class_idx, int):
+            class_idx = [class_idx]
+            
         if isinstance(class_accuracy_requirements, str):
             class_accuracy_requirements = [class_accuracy_requirements]
-
-        map_level_dict = dict()
+            
+        if not class_idx:
+            class_idx = range(len(self._classes))
+            
+        if not class_accuracy_requirements:
+            class_accuracy_requirements = self.class_accuracy_requirement_possible
+            
+        if not all([class_accuracy_requirement in self.class_accuracy_requirement_possible for class_accuracy_requirement in class_accuracy_requirements]):
+            raise ValueError('class_accuracy_requirement should only contain the possible values: ', self.class_accuracy_requirement_possible)
+        
+        if not all([cls_idx in range(len(self._classes)) for cls_idx in class_idx]):
+            raise ValueError('class_idx should only contain valid indices for the classes.')
+        
+        level_dict = dict()
         for level in iou_level:
-
-            class_dict = dict()
+        
+            class_accuracy_requirement_dict = dict()
             for class_accuracy_requirement in class_accuracy_requirements:
-                if not level in self.threshold_specific_results_dict.keys():
-                    self.val_batch_evaluation(level)
-
-                _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-                
-                tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-                
-                precision = self.precision(tp_binary)
-
-                class_dict[class_accuracy_requirement] = round(precision, 3)
-
-            map_level_dict[level] = class_dict
-
-        return map_level_dict
-
-    def compute_recall(self,
-                       iou_level: Union[float, List[float]],
-                       class_accuracy_requirements: str) -> float:
-        
-        """
-        
-        This function computes the recall score.
-        Recall = TP / (TP + FN)
-
-        """
-
-        if isinstance(iou_level, float):
-            iou_level = [iou_level]
-
-        if isinstance(class_accuracy_requirements, str):
-            class_accuracy_requirements = [class_accuracy_requirements]
-
-        iou_level_dict = dict()
-        for level in iou_level:
                 
                 class_dict = dict()
-                for class_accuracy_requirement in class_accuracy_requirements:
-                    if not level in self.threshold_specific_results_dict.keys():
-                        self.val_batch_evaluation(level)
-    
-                    _threshold_specific_results_dict = self.threshold_specific_results_dict[level]
-                    
-                    tp_binary, score, y_true, y_pred = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=_threshold_specific_results_dict)
-                    
-                    num_tp = tp_binary.sum().item()
-                    num_fn = len(_threshold_specific_results_dict['unassigned_gt_inds'])
- 
-                    if num_tp + num_fn == 0:
-                        recall = 0.0
-                    else:
-                        recall = num_tp / (num_tp + num_fn)
-
-                    class_dict[class_accuracy_requirement] = round(recall, 3)                    
-    
-                iou_level_dict[level] = class_dict
-
-        return iou_level_dict
-
+                
+                class_dict['map'] = self.metrics_method_map[method](level=level, class_accuracy_requirement=class_accuracy_requirement)
+                
+                for cls_idx in class_idx:
+                    class_dict[self._classes[cls_idx]] = self.metrics_method_map[method](level=level, class_accuracy_requirement=class_accuracy_requirement, class_idx=cls_idx)
+                        
+                class_accuracy_requirement_dict[class_accuracy_requirement] = class_dict
             
-    def is_of_type_kitti(self, _lidar_path: 'str') -> bool:
-        """
-        Example of _lidar_path:
-        'data/kitti_osdar23_merge/points/000000.bin'
-        """
-        # Extract the file name
-        file_name = _lidar_path.split('/')[-1][:-4]
-        # Check if the file name is a number
-        return file_name.isnumeric()   
+            level_dict[level] = class_accuracy_requirement_dict
+            
+        return {method: level_dict}
+
+    def options_frame_plots(self,
+        method: str,
+        iou_level: float):
+        return self.plots_method_map[method](iou_level)
+        
+    
+    def options_frame_curves(self,
+        method: str,
+        iou_level: float):
+        return self.curves_method_map[method](iou_level)
     
 ####### Helper functions #######
 
