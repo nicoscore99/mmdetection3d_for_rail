@@ -215,7 +215,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         curves_dict['prec'] = self.evaluator.options_frame_curves(method='precision_recall_curve', iou_level=0.3)
         curves_dict['roc'] = self.evaluator.options_frame_curves(method='roc_curve', iou_level=0.3)
-        curves_dict['cm'] = self.evaluator.options_frame_curves(method='confusion_matrix', iou_level=0.3)
+        # curves_dict['cm'] = self.evaluator.options_frame_curves(method='confusion_matrix', iou_level=0.3)
 
         ######## Visualization ########
 
