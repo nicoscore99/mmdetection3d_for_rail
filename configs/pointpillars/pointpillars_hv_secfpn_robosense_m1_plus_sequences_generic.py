@@ -1,35 +1,29 @@
-_base_ = [
-    # Whatever this is
-    '../_base_/default_runtime.py'
-]
-
-custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
-                               'mmdet3d.datasets.kitti_dataset',
+# dataset settings
+custom_imports = dict(imports=['mmdet3d.datasets.robosense_m1_plus_dataset', 
                                'mmdet3d.engine.hooks.wandb_logger_hook',
-                               'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)                
+                               'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)             
 
-kitti_dataset = dict(type='KittiDataset')
-osdar23_dataset = dict(type='OSDaR23Dataset')
+robosense_m1_plus_dataset = dict(type='ROBOSENSE_M1_PLUS')
 
 ############# Additional Hooks #############
 
-# default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pp_run14_mix_kitti_osdar23_3class_80m',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'pointpillars',
-#              'name': 'rtx4090_pp_run14_mix_kitti_osdar23_3class_80m',
-#              })
-# ]
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pp_run12_robosense_m1_plus_sequences',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'pointpillars',
+             'name': 'rtx4090_pp_run12_robosense_m1_plus_sequences',
+             })
+]
 
 ############# Generic Variables #############
 
 class_names = ['Pedestrian', 'Cyclist', 'Car']
-point_cloud_range = [0, -39.68, -3, 80.64, 39.68, 1]
+point_cloud_range = [0, -39.68, -3, 80.64, 39.68, 10]
 point_cloud_range_inference = [0, -39.68, -3, 80.64, 39.68, 10]
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
@@ -78,27 +72,26 @@ generic_eval_pipeline = [
     dict(type='Pack3DDetInputs', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 
-############# Kitti Specific Config #############
+############# Robosense Specific Config #############
 
-kitti_data_root = 'data/kitti/'
-kitti_dataset_type = 'KittiDataset'
+robosense_dataroot = 'data/robosense_m1_plus_sequences/'
+robosense_dataset_type = 'ROBOSENSE_M1_PLUS'
 
-kitti_db_sampler = dict(
-    data_root=kitti_data_root,
-    info_path=kitti_data_root + 'kitti_dbinfos_train.pkl',
+robosense_db_sampler = dict(
+    data_root=robosense_dataroot,
+    info_path=robosense_dataroot + 'kitti_dbinfos_train.pkl',
     rate=1.0,
     prepare=dict(
-        filter_by_difficulty=[-1],
         filter_by_min_points=dict(Car=20, Pedestrian=20, Cyclist=20)),
     classes=class_names,
     sample_groups=dict(Car=10, Pedestrian=10, Cyclist=10),
     points_loader=points_loader,
     backend_args=None)
     
-kitti_train_pipeline = [
+robosense_train_pipeline = [
     points_loader,
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
-    dict(type='ObjectSample', db_sampler=kitti_db_sampler),
+    dict(type='ObjectSample', db_sampler=robosense_db_sampler),
     dict(
         type='ObjectNoise',
         num_try=100,
@@ -118,22 +111,21 @@ kitti_train_pipeline = [
         keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 
-kitti_train_dataset = dict(
-    type=kitti_dataset_type,
-    data_root=kitti_data_root,
+robosense_train_dataset = dict(
+    type=robosense_dataset_type,
+    data_root=robosense_dataroot,
     ann_file= 'kitti_infos_train.pkl',
-    data_prefix=dict(pts='training/velodyne_reduced'),
-    pipeline=kitti_train_pipeline,
+    data_prefix=dict(pts='points'),
+    pipeline=robosense_train_pipeline,
     modality=input_modality,
     test_mode=False,
     metainfo=metainfo,
     backend_args=None)
 
-kitti_val_dataset = dict(
-    type=kitti_dataset_type,
-    indices=1.0,
-    data_root=kitti_data_root,
-    data_prefix=dict(pts='training/velodyne_reduced'),
+robosense_val_dataset = dict(
+    type=robosense_dataset_type,
+    data_root=robosense_dataroot,
+    data_prefix=dict(pts='points'),
     ann_file='kitti_infos_val.pkl',
     pipeline=generic_eval_pipeline,
     modality=input_modality,
@@ -141,73 +133,12 @@ kitti_val_dataset = dict(
     metainfo=metainfo,
     backend_args=None)
 
-kitti_test_dataset = kitti_val_dataset
+robosense_test_dataset = robosense_val_dataset
 
-kitti_repeat_dataset = dict(
+robosense_repeat_dataset = dict(
     type='RepeatDataset',
     times=1,
-    dataset=kitti_train_dataset)
-
-############# OSDAR23 Specific Config #############
-
-osdar23_data_root = 'data/osdar23_3class/'
-osdar23_dataset_type = 'OSDaR23Dataset'
-
-osdar23_db_sampler = dict(
-    data_root=osdar23_data_root,
-    info_path=osdar23_data_root + 'kitti_dbinfos_train.pkl',
-    rate=1.0,
-    prepare=dict(
-        filter_by_min_points=dict(Pedestrian=20, Cyclist=20, Car=20)
-    ),
-    classes=class_names,
-    sample_groups=dict(Pedestrian=10, Cyclist=10, Car=10),
-    points_loader=points_loader,
-    backend_args=None)
-
-osdar23_train_pipeline = [
-    points_loader,
-    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
-    dict(type='ObjectSample', db_sampler=osdar23_db_sampler, use_ground_plane=False),
-    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
-    dict(
-        type='GlobalRotScaleTrans',
-        rot_range=[-0.78539816, 0.78539816],
-        scale_ratio_range=[0.95, 1.05]),
-    dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='PointShuffle'),
-    dict(
-        type='Pack3DDetInputs',
-        keys=['points', 'gt_labels_3d', 'gt_bboxes_3d'])
-]
-
-osdar23_train_dataset = dict(
-    type=osdar23_dataset_type,
-    data_root=osdar23_data_root,
-    ann_file='kitti_infos_train.pkl',
-    data_prefix=dict(pts='points'),
-    pipeline=osdar23_train_pipeline,
-    modality=input_modality,
-    test_mode=False,
-    metainfo=metainfo,
-    backend_args=None)
-
-repeat_osdar23_train_dataset = dict(
-    type='RepeatDataset',
-    times=2,
-    dataset=osdar23_train_dataset)
-
-osdar23_val_dataset = dict(
-    type=osdar23_dataset_type,
-    data_root=osdar23_data_root,
-    ann_file='kitti_infos_val.pkl',
-    data_prefix=dict(pts='points'),
-    pipeline=generic_eval_pipeline,
-    modality=input_modality,
-    test_mode=True,
-    metainfo=metainfo,
-    backend_args=None)
+    dataset=robosense_train_dataset)
  
 ############# Dataloader Config #############
 train_dataloader = dict(
@@ -217,7 +148,7 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[repeat_osdar23_train_dataset, kitti_repeat_dataset],
+        datasets=[robosense_repeat_dataset],
     )
 )
 
@@ -229,8 +160,7 @@ val_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type='ConcatDataset',
-        # datasets=[osdar23_val_dataset, kitti_val_dataset],
-        datasets=[kitti_val_dataset],
+        datasets=[robosense_val_dataset],
     )
 )
 
@@ -242,9 +172,9 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range_inference,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pp_run14_mix_kitti_osdar23_3class_80m/evaluation_kitti',
-    save_graphics = True,
-    save_evaluation_results = True,
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pp_run12_robosense_m1_plus_sequences/evaluation',
+    save_graphics = False,
+    save_evaluation_results = False,
     save_random_viz = False,
     random_viz_keys = None)
 
@@ -259,8 +189,6 @@ visualizer = dict(
 voxel_size = [0.16, 0.16, 4]
 
 kitti_object_sizes = [[0.8, 0.6, 1.73], [1.76, 0.6, 1.73], [3.9, 1.6, 1.56]]
-osdar_object_sizes = [[0.89, 0.86, 1.89], [1.72, 0.89, 1.27], [4.3, 3.07, 2.79]]
-size_compromise = [[0.85, 0.73, 1.81], [1.74, 0.74, 1.45], [4.1, 2.25, 2.1]]
 
 model = dict(
     type='VoxelNet',
@@ -306,7 +234,7 @@ model = dict(
                 [0, -39.68, -0.6, 80.64, 39.68, -0.6],
                 [0, -39.68, -1.78, 80.64, 39.68, -1.78],
             ],
-            sizes=size_compromise,
+            sizes=kitti_object_sizes,
             rotations=[0, 1.57],
             reshape_out=False),
         diff_rad_by_sin=True,
@@ -361,19 +289,14 @@ model = dict(
 
 ############# Scheduler #############
 
-# The schedule is usually used by models trained on KITTI dataset
-# The learning rate set in the cyclic schedule is the initial learning rate
-# rather than the max learning rate. Since the target_ratio is (10, 1e-4),
-# the learning rate will change from 0.0018 to 0.018, than go to 0.0018*1e-4
 lr = 0.0018
-# The optimizer follows the setting in SECOND.Pytorch, but here we use
-# the official AdamW optimizer implemented by PyTorch.
+
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(type='AdamW', lr=lr, betas=(0.95, 0.99), weight_decay=0.01),
     clip_grad=dict(max_norm=10, norm_type=2))
 # learning rate
-epoch_num = 80
+epoch_num = 10
 
 param_scheduler = [
     dict(
@@ -413,7 +336,7 @@ train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=1)
 val_cfg = dict()
 test_cfg = dict()
 
-auto_scale_lr = dict(enable=False, base_batch_size=6)
+auto_scale_lr = dict(enable=False, base_batch_size=48)
 
 ############# Default Runtime Config #############
 
@@ -440,4 +363,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pp_run14_mix_kitti_osdar23_3class_80m'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pp_run12_robosense_m1_plus_sequences'

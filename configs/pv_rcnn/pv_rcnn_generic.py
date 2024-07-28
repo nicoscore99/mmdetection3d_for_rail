@@ -8,17 +8,17 @@ osdar23_dataset = dict(type='OSDaR23Dataset')
 
 ############# Additional Hooks #############
 
-custom_hooks = [
-    dict(type='WandbLoggerHook', 
-         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run4_mixed_3class',
-         yaml_config_path='wandb_auth.yaml',
-         log_artifact=True,
-         init_kwargs={
-             'entity': 'railsensing',
-             'project': 'pv-rcnn',
-             'name': 'rtx4090_pvrcnn_run4_mixed_3class',
-             })
-]
+# custom_hooks = [
+#     dict(type='WandbLoggerHook', 
+#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run4_mixed_3class',
+#          yaml_config_path='wandb_auth.yaml',
+#          log_artifact=True,
+#          init_kwargs={
+#              'entity': 'railsensing',
+#              'project': 'pv-rcnn',
+#              'name': 'rtx4090_pvrcnn_run4_mixed_3class',
+#              })
+# ]
 
 ############# Generic variables #############
 
@@ -242,7 +242,7 @@ val_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[osdar23_val_dataset, kitti_val_dataset]
+        datasets=[kitti_val_dataset]
     )
 )
 
@@ -254,9 +254,9 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range_inference,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run3_osdar23_3class/evaluation',
-    save_graphics = False,
-    save_evaluation_results = False,
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run4_mixed_3class/evaluation_kitti',
+    save_graphics = True,
+    save_evaluation_results = True,
     save_random_viz = False,
     random_viz_keys = None)
 

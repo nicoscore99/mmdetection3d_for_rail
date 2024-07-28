@@ -442,19 +442,19 @@ class EvaluatorMetrics():
             'hard': self.tp_detection_and_label
         }
         
-        self.metrics_method_map = {
+        self.metrics_method = {
             'ap': self.ap,
             'precision': self.precision,
             'recall': self.recall
         }
         
-        self.curves_method_map = {
+        self.curves_method = {
             'precision_recall_curve': self.precision_recall_curve,
             'roc_curve': self.roc_curve,
             'confusion_matrix': self.confusion_matrix
         }
         
-        self.plots_method_map = {
+        self.plots_method = {
             'precision_recall_plot': self.precision_recall_plot,
             'roc_plot': self.roc_plot,
             'confusion_matrix_plot': self.confusion_matrix_plot
@@ -590,10 +590,7 @@ class EvaluatorMetrics():
             filtered_dict (dict): A dict that contains the results that were, if this is wanted, already filtered for detection labels.
 
         Returns:
-            tp (torch.Tensor): A tensor that indicates if a detection is a true positive or not.
-            score (torch.Tensor): A tensor that contains the confidence scores of the detections.
-            y_true (torch.Tensor): A tensor that contains the true labels of the detections.
-            y_pred (torch.Tensor): A tensor that contains the predicted labels of the detections.    
+            tp_binary (torch.Tensor): A tensor that indicates if a detection is a true positive or not.
         
 
         ***Attention***: True positives are defined here as detections, that have a valid, corresponding bounding box (but not 
@@ -785,15 +782,11 @@ class EvaluatorMetrics():
         if class_idx is not None:
             results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
             
-        dt_tp_binary = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=results_dict)
-        
         # prevent case of no detections
-        if dt_tp_binary.nelement() == 0 or results_dict['gt_labels'].nelement() == 0:
+        if len(results_dict['gt_labels']) == 0 or results_dict['gt_assigned_or_not_binary'].nelement() == 0:
             return 0.0
         
-        tp = dt_tp_binary.sum().item()
-        fn = len(results_dict['gt_labels']) - tp
-        recall = tp / (tp + fn)
+        recall = results_dict['gt_assigned_or_not_binary'].sum().item() / len(results_dict['gt_assigned_or_not_binary'])
         
         return round(recall, 3)
     
@@ -905,10 +898,10 @@ class EvaluatorMetrics():
                 
                 class_dict = dict()
                 
-                class_dict['map'] = self.metrics_method_map[method](level=level, class_accuracy_requirement=class_accuracy_requirement)
+                class_dict['avg'] = self.metrics_method[method](level=level, class_accuracy_requirement=class_accuracy_requirement)
                 
                 for cls_idx in class_idx:
-                    class_dict[self._classes[cls_idx]] = self.metrics_method_map[method](level=level, class_accuracy_requirement=class_accuracy_requirement, class_idx=cls_idx)
+                    class_dict[self._classes[cls_idx]] = self.metrics_method[method](level=level, class_accuracy_requirement=class_accuracy_requirement, class_idx=cls_idx)
                         
                 class_accuracy_requirement_dict[class_accuracy_requirement] = class_dict
             
@@ -919,13 +912,13 @@ class EvaluatorMetrics():
     def options_frame_plots(self,
         method: str,
         iou_level: float):
-        return self.plots_method_map[method](iou_level)
+        return self.plots_method[method](iou_level)
         
     
     def options_frame_curves(self,
         method: str,
         iou_level: float):
-        return self.curves_method_map[method](iou_level)
+        return self.curves_method[method](iou_level)
     
 ####### Helper functions #######
 

@@ -17,7 +17,7 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
                  save_dir,
                  prefix,
                  workers=64,
-                 release_file_name='robosense_m1_plus_sequences-testrelease.json',
+                 release_file_name='robosense_m1_plus_sequences-v0.1.json',
                  test_mode=True,
                  info_prefix='robosense_m1_plus_sequences'):
         
@@ -188,8 +188,8 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
         self.release_data = None
         self.labeled_frame_names = None
         
-        self.train_partitions = 0.5
-        self.val_partitions = 0.5
+        self.train_partitions = 0.7
+        self.val_partitions = 0.3
         
         self.lidar_sensors_list = ['lidar']
         
@@ -205,12 +205,14 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
             'Person (sitting)',
             'Unknown',
             'Wheelchair',
-            'Animal'
+            'Animal',
+            'Bus'
         ]
         
         self.class_name_mapping = {
             'Pedestrian': ['Pedestrian', 'Person (sitting)', 'Wheelchair'],
-              'Truck': ['Truck'],
+            'Car': ['Car', 'Van'],
+            'Truck': ['Truck', 'Bus'],
             'Train': ['Train', 'Tram'],
             'Cyclist': ['Bike', 'Motorcycle'],
             'Unknown': ['Unknown', 'Animal']
@@ -298,7 +300,7 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
                 
                 if 'labels' in sample:
                     if sample['labels']['ground-truth']:
-                        if sample['labels']['ground-truth']['label_status'] == 'LABELED':
+                        if sample['labels']['ground-truth']['label_status'] == 'REVIEWED':
                             labeled_samples.append(sample)
                         
             
@@ -334,7 +336,7 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
         for category in self.release_data['dataset']['task_attributes']['categories']:
             category_names.append(category['name'])
             
-        assert category_names == self.ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR_CLASSES, 'Category names do not match'
+        assert category_names == self.ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR_CLASSES, f'Category names do not match. Expected {self.ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR_CLASSES}, got {category_names}'
         
         print_log('Category names match', logger='current')       
     
