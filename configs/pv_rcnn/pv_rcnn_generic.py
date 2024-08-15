@@ -8,22 +8,22 @@ osdar23_dataset = dict(type='OSDaR23Dataset')
 
 ############# Additional Hooks #############
 
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run4_mixed_3class',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'pv-rcnn',
-#              'name': 'rtx4090_pvrcnn_run4_mixed_3class',
-#              })
-# ]
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run5_osdar_3class',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'pv-rcnn',
+             'name': 'rtx4090_pvrcnn_run5_osdar_3class',
+             })
+]
 
 ############# Generic variables #############
 
 class_names = ['Pedestrian', 'Cyclist', 'Car']
-point_cloud_range = [5.0, -40.0, -3, 80.0, 40.0, 1]
+point_cloud_range = [0.0, -40.0, -3, 70.4, 40.0, 1]
 input_modality = dict(use_lidar=True, use_camera=False)
 point_cloud_range_inference = point_cloud_range
 metainfo = dict(classes=class_names)
@@ -230,7 +230,7 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[repeat_osdar23_train_dataset, kitti_repeat_dataset]
+        datasets=[osdar23_train_dataset]
     )
 )
 
@@ -242,7 +242,7 @@ val_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[kitti_val_dataset]
+        datasets=[osdar23_val_dataset]
     )
 )
 
@@ -254,9 +254,9 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range_inference,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run4_mixed_3class/evaluation_kitti',
-    save_graphics = True,
-    save_evaluation_results = True,
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run5_osdar_3class/evaluation',
+    save_graphics = False,
+    save_evaluation_results = False,
     save_random_viz = False,
     random_viz_keys = None)
 
@@ -290,7 +290,7 @@ model = dict(
     middle_encoder=dict(
         type='SparseEncoder',
         in_channels=4,
-        sparse_shape=[41, 1600, 1504],
+        sparse_shape=[41, 1600, 1408],
         order=('conv', 'norm', 'act'),
         encoder_paddings=((0, 0, 0), ((1, 1, 1), 0, 0), ((1, 1, 1), 0, 0),
                           ((0, 1, 1), 0, 0)),
@@ -364,13 +364,13 @@ model = dict(
         dir_offset=0.78539,
         anchor_generator=dict(
             type='Anchor3DRangeGenerator',
-            ranges=[[0, -40.0, -0.6, 80.0, 40.0, -0.6],
-                    [0, -40.0, -0.6, 80.0, 40.0, -0.6],
-                    [0, -40.0, -1.78, 80.0, 40.0, -1.78]],
+            ranges=[[0, -40.0, -0.6, 70.4, 40.0, -0.6],
+                    [0, -40.0, -0.6, 70.4, 40.0, -0.6],
+                    [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
                     # [0, -40.0, -0.6, 70.4, 40.0, -0.6]],
                     # [0, -40.0, -1.78, 70.4, 40.0, -1.78],
                     # [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
-            sizes=size_compromise,
+            sizes=osdar_object_sizes,
             rotations=[0, 1.57],
             reshape_out=False),
         diff_rad_by_sin=True,
@@ -578,7 +578,7 @@ optim_wrapper = dict(
     optimizer=dict(type='AdamW', lr=lr, betas=(0.95, 0.99), weight_decay=0.01),
     clip_grad=dict(max_norm=10, norm_type=2))
 
-epoch_num = 40
+epoch_num = 50
 
 param_scheduler = [
     # learning rate scheduler
@@ -616,7 +616,7 @@ param_scheduler = [
         type='CosineAnnealingMomentum',
         T_max=epoch_num*0.6,
         eta_min=1,
-        begin=15,
+        begin=epoch_num*0.4,
         end=epoch_num*1.0,
         by_epoch=True,
         convert_to_iter_based=True)
@@ -634,9 +634,9 @@ default_scope = 'mmdet3d'
 
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
-    logger=dict(type='LoggerHook', interval=50),
+    logger=dict(type='LoggerHook', interval=100),
     param_scheduler=dict(type='ParamSchedulerHook'),
-    checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True),
+    checkpoint=dict(type='CheckpointHook', interval=1, by_epoch=True),
     sampler_seed=dict(type='DistSamplerSeedHook'),
     visualization=dict(type='Det3DVisualizationHook'))
 
@@ -653,4 +653,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run4_mixed_3class'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run5_osdar_3class'

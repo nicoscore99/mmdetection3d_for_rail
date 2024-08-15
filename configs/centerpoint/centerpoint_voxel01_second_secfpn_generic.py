@@ -29,7 +29,7 @@ osdar23_dataset = dict(type='OSDaR23Dataset')
 ############# Generic variables #############
 
 class_names = ['Pedestrian', 'Cyclist', 'Car']
-point_cloud_range = [5.0, -40, -3.0, 50, 80.2, 3.0]
+point_cloud_range = [5.0, -40, -3.0, 40, 80.2, 3.0]
 point_cloud_range_inference = point_cloud_range
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
