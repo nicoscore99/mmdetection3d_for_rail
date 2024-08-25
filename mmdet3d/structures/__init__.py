@@ -5,6 +5,7 @@ from .bbox_3d import (BaseInstance3DBoxes, Box3DMode, CameraInstance3DBoxes,
                       mono_cam_box2vis, points_cam2img, points_img2cam,
                       rotation_3d_in_axis, xywhr2xyxyr)
 from .det3d_data_sample import Det3DDataSample
+from .cls3d_data_sample import Cls3DDataSample
 # yapf: disable
 from .ops import (AxisAlignedBboxOverlaps3D, BboxOverlaps3D,
                   BboxOverlapsNearest3D, axis_aligned_bbox_overlaps_3d,
@@ -45,5 +46,5 @@ __all__ = [
     'BboxOverlapsNearest3D', 'BboxOverlaps3D', 'bbox_overlaps_nearest_3d',
     'bbox_overlaps_3d', 'AxisAlignedBboxOverlaps3D',
     'axis_aligned_bbox_overlaps_3d', 'bbox3d_mapping_back', 'bbox3d2roi',
-    'bbox3d2result'
+    'bbox3d2result', 'Cls3DDataSample'
 ]

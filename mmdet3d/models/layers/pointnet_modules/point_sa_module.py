@@ -132,6 +132,10 @@ class BasePointSAModule(nn.Module):
             - new_xyz: (B, num_point, 3) Sampled xyz coordinates of points.
             - indices: (B, num_point) Sampled points' index.
         """
+
+        # assert dimensions
+        assert points_xyz.dim() == 3
+
         xyz_flipped = points_xyz.transpose(1, 2).contiguous()
         if indices is not None:
             assert (indices.shape[1] == self.num_point[0])

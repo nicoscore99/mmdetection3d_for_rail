@@ -1,6 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from .dbsampler import DataBaseSampler
 from .formating import Pack3DDetInputs
+from .formatting_classification import PackClsInputs
 from .loading import (LidarDet3DInferencerLoader, LoadAnnotations3D,
                       LoadImageFromFileMono3D, LoadMultiViewImageFromFiles,
                       LoadPointsFromDict, LoadPointsFromFile,
@@ -19,6 +20,8 @@ from .transforms_3d import (AffineResize, BackgroundPointsFilter,
                             RandomFlip3D, RandomJitterPoints, RandomResize3D,
                             RandomShiftScale, Resize3D, VoxelBasedPointSampler)
 
+from .loading_classification import LoadAnnotationsCls, LoadPointsFromFileForClassification
+
 __all__ = [
     'ObjectSample', 'RandomFlip3D', 'ObjectNoise', 'GlobalRotScaleTrans',
     'PointShuffle', 'ObjectRangeFilter', 'PointsRangeFilter',
@@ -32,5 +35,5 @@ __all__ = [
     'RandomShiftScale', 'LoadPointsFromDict', 'Resize3D', 'RandomResize3D',
     'MultiViewWrapper', 'PhotoMetricDistortion3D', 'MonoDet3DInferencerLoader',
     'LidarDet3DInferencerLoader', 'PolarMix', 'LaserMix',
-    'MultiModalityDet3DInferencerLoader'
+    'MultiModalityDet3DInferencerLoader', 'LoadAnnotationsCls', 'PackClsInputs'
 ]

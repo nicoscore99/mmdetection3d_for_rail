@@ -259,4 +259,4 @@ class Pack3DDetInputs(BaseTransform):
         repr_str = self.__class__.__name__
         repr_str += f'(keys={self.keys})'
         repr_str += f'(meta_keys={self.meta_keys})'
-        return repr_str
+        return repr_str         # noqa: E501
