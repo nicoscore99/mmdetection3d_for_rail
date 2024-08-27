@@ -83,6 +83,10 @@ def main():
     # Split the data_list into train and val
     train_data_list = data_list[:int(0.8 * len(data_list))]
     val_data_list = data_list[int(0.8 * len(data_list)):]
+
+    # print lenght information on the two datasets
+    print(f'Train data list length: {len(train_data_list)}')
+    print(f'Val data list length: {len(val_data_list)}')
     
     # Put into two separate lists
     merged_infos_train['data_list'] = train_data_list

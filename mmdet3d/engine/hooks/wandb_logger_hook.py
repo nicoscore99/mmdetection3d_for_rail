@@ -202,6 +202,15 @@ class WandbLoggerHook(LoggerHook):
                 for key, value in outputs.items():
                     self._wandb.log({key: value, 'val_epoch': runner.epoch}, commit=self._commit)
 
+        if 'evaluations' in metrics:
+            if metrics['evaluations'].keys():
+                outputs = {'val_metrics': metrics['evaluations']}
+                outputs = flatten_dict(outputs)
+                # self._wandb.log(outputs, step=runner.epoch, commit=self._commit)
+
+                for key, value in outputs.items():
+                    self._wandb.log({key: value, 'val_epoch': runner.epoch}, commit=self._commit)
+
         if 'General 3D Det metric mmlab/curves' in metrics:
             curves = metrics['General 3D Det metric mmlab/curves']
             if curves.keys():
@@ -209,6 +218,13 @@ class WandbLoggerHook(LoggerHook):
                     for level in curves[curve_key].keys():
                         self.curve_visualization_wandb_logging_map[curve_key](runner = runner,
                                                                         curve = curves[curve_key])
+                        
+        # if 'curves' in metrics:
+        #     curves = metrics['curves']
+        #     if curves.keys():
+        #         for curve_key in curves.keys():
+        #             self.curve_visualization_wandb_logging_map[curve_key](runner = runner,
+        #                                                                 curve = curves[curve_key])
                     
     def after_test_epoch(self,
                          runner: Runner,

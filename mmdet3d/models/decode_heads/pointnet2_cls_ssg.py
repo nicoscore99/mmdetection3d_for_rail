@@ -74,10 +74,13 @@ class PointNet2ClsHead(BaseModule, metaclass=ABCMeta):
         
     def forward(self, feat_dict: dict) -> Tensor:
         
-        feature_vector = feat_dict['sa_features'][-1]
+        feature_vector = feat_dict['sa_features']
         
         # from [B, 1024, 1] to [B, 1024]
-        x = feature_vector.squeeze(-1)
+        if feature_vector.shape[-1] == 1:
+            x = feature_vector.squeeze(-1)
+        else:
+            x = feature_vector
 
         for layer in self.cls_head:
             x = layer(x)

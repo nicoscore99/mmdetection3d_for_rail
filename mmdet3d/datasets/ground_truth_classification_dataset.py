@@ -268,5 +268,5 @@ class GroundTruthClassificationDataset(BaseDataset):
             set[int]: All categories in the sample of specified index.
         """
         info = self.get_data_info(idx)
-        gt_labels = info['ann_info']['class_idx'].tolist()
-        return set(gt_labels)
+        gt_label = info['ann_info']['class_idx']
+        return [gt_label]

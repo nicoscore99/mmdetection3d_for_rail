@@ -124,8 +124,8 @@ class Cls3DDataPreprocessor(BaseDataPreprocessor):
             if self.normalize:
                 for i, res in enumerate(batch_inputs['points']):
                     if res.shape[0] > 0:
-                        res[:, :3] = res[:, :3] - res[:, :3].mean(0)
-                        # res[:, :3] = res[:, :3] / res[:, :3].std Not normalize by size
+                        res[:, :3] = res[:, :3] - res[:, :3].mean(dim=0)
+                        # res[:, :3] = res[:, :3] / res[:, :3].std(dim=0)
 
             if self.downsample:
                 # assert that there is more than the number of points to downsample

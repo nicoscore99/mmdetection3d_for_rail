@@ -15,7 +15,7 @@ from mmdet3d.registry import METRICS
 from mmdet3d.structures import (Box3DMode, CameraInstance3DBoxes,
                                 LiDARInstance3DBoxes, points_cam2img)
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 
 
 @METRICS.register_module()
@@ -70,17 +70,17 @@ class PointCloudClsMetric(BaseMetric):
         precision = precision_score(y_true, y_pred, average='macro')
         recall = recall_score(y_true, y_pred, average='macro')
         f1 = f1_score(y_true, y_pred, average='macro')
+        cm = confusion_matrix(y_true, y_pred)
         
         # Reset the ground truth and results
         self.ground_truth = []
         self.results = []
         
-        return {
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1': f1
-        }
+        return {'evaluations': {'accuracy': accuracy,
+                                 'precision': precision,
+                                 'recall': recall,
+                                 'f1': f1},
+                'curves': {'confusion_matrix': cm}}
     
 
     

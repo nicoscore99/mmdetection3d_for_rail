@@ -29,3 +29,8 @@ The 3D evaluation metrics provided by MMDetection3D could not be adopted for the
 
 ### New WandB Logger Hook
 To gain oversight over the trained models and the training process, a [Weights&Biases](https://wandb.ai) integration for MMDetection3D was created. This [script](/mmdet3d/engine/hooks/wandb_logger_hook.py) implements a registered hook that logs the training progress per iteration and also per epoch. Addtionally, the WandB logger hook also logs the metrics from the 3D-detection evaluation metrics described above along with the graphs created by that script. In order to access the validation losses, a few changes were made to the MMEngine foundational library. These are elaborated in the corresponding package ([MMEngine_for_rail](https://github.com/nicoscore99/mmengine_for_rail))
+
+### Pointcloud Classification
+I developed a pipeline for the classification of 3D point clouds. The pipeline uses the grund truth data that is generated when any dataset is converted using the [dataset conversion script](tools/dataset_converters/create_gt_database.py). The ground truth label file can be generated using another conversion script, that takes the .pkl files for the training sets and the ground truth dataset as an input (see [create_gt_dbinfos.py](/home/cws-ml-lab/mmdetection3d_for_rail/tools/dataset_converters/create_gt_dbinfos.py)).
+
+The point cloud classification pipeline is based on the default implementation of Pointnet++ provided by MMDetection. Instead of an Encoder-Decoder Network, only the encoder is used and a classification head is added ontop of the encoder.
