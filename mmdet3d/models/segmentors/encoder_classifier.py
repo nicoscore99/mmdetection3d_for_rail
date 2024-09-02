@@ -314,9 +314,14 @@ class EncoderCls3D(BaseModel):
             batch_input_metas.append(data_sample.metainfo)
 
         points = batch_inputs_dict['points']
-        for point, input_meta in zip(points, batch_input_metas):
+        # for point, input_meta in zip(points, batch_input_metas):
+        #     inf = self.inference(
+        #         point.unsqueeze(0), [input_meta], rescale)[0]
+        #     cls_list.append(inf)
+
+        for _points in points:
             inf = self.inference(
-                point.unsqueeze(0), [input_meta], rescale)[0]
+                _points.unsqueeze(0), [], rescale)[0]
             cls_list.append(inf)
 
         return cls_list

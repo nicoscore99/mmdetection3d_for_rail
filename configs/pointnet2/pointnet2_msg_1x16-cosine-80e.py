@@ -1,23 +1,36 @@
+custom_imports = dict(
+    imports=['mmdet3d.apis.inferencers.lidar_classification_inferencers',
+             'mmdet3d.models.data_preprocessors.cls_data_preprocessor',
+             'mmdet3d.models.segmentors.encoder_classifier'],
+    allow_failed_imports=False)
+
+from mmdet3d.models.data_preprocessors import Cls3DDataPreprocessor
+
 # custom_imports = dict(
-#     imports=['mmdet3d.datasets.ground_truth_classification_dataset'], allow_failed_imports=False)
+#     imports=['mmdet3d.apis.inferencers.lidar_classification_inferencers',
+#              'mmdet3d.models.data_preprocessors.cls_data_preprocessor',
+#              'mmdet3d.models.backbones.pointnetpp_sa_ssg_torch_impl',
+#                 'mmdet3d.models.decode_heads.pointnet2_cls_ssg',
+#                 'mmdet3d.models.segmentors.encoder_classifer'],
+#     allow_failed_imports=False)
 
 
 ######## Additional Hooks ########
 
 custom_hooks = [
     dict(type='WandbLoggerHook', 
-         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnet_cls_robo_only_training_mixed_osdar_robo_pytorch_impl',
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling',
          log_artifact=True,
          init_kwargs={
              'entity': 'railsensing',
              'project': 'classification',
-             'name': 'rtx4090_pointnet_cls_robo_only_training_mixed_osdar_robo_pytorch_impl',
+             'name': 'rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling',
         })
 ]
 
 ####### Dataset Config #######
 dataset = 'GroundTruthClassificationDataset'
-classes = ['Pedestrian', 'Cyclist', 'Car']
+classes = ['Pedestrian', 'Cyclist', 'RoadVehicle', 'Train']
 
 points_loader = dict(
     type='LoadPointsFromFileForClassification',
@@ -29,6 +42,9 @@ points_loader = dict(
 train_pipeline = [
     points_loader,
     dict(type='LoadAnnotationsCls'),
+    dict(type='Open3DBallPivoting',
+         min_points=50,
+         num_pts_sample=256),        
     dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
     dict(
         type='GlobalRotScaleTrans',
@@ -42,10 +58,12 @@ train_pipeline = [
 val_pipeline = [
     points_loader,
     dict(type='LoadAnnotationsCls'),
+    dict(type='Open3DBallPivoting',
+         min_points=50,
+         num_pts_sample=256),     
     dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.0),
     dict(type='PackClsInputs')
 ]    
-
 
 val_evaluator = dict(
     type='PointCloudClsMetric',
@@ -54,7 +72,7 @@ val_evaluator = dict(
 
 ############# OSADAR23 Dataset config #############
 
-data_root = 'data/osdar23_3class/'
+data_root = 'data/osdar23_cls'
 
 train_dataset_osdar = dict(
     type=dataset,
@@ -62,7 +80,8 @@ train_dataset_osdar = dict(
     ann_file='gt_infos_database_train.pkl',
     data_prefix=dict(pts=''),
     metainfo=dict(classes=classes),
-    min_num_pts=256,
+    input_point_size=256,
+    min_num_pts=256,   
     pipeline=train_pipeline)
 
 train_dataset_classbalanced_osdar = dict(
@@ -77,12 +96,13 @@ val_dataset_osdar = dict(
     ann_file='gt_infos_database_val.pkl',
     data_prefix=dict(pts=''),
     metainfo=dict(classes=classes),
-    min_num_pts=256,
+    input_point_size=256,
+    min_num_pts=256,   
     pipeline=val_pipeline)
 
 ############# Robosense Dataset config #############
 
-data_root = 'data/robosense_m1_plus_sequences'
+data_root = 'data/robosense_cls'
 
 train_dataset_robo = dict(
     type=dataset,
@@ -90,7 +110,8 @@ train_dataset_robo = dict(
     ann_file='gt_infos_database_train.pkl',
     data_prefix=dict(pts=''),
     metainfo=dict(classes=classes),
-    min_num_pts=256,
+    input_point_size=256,
+    min_num_pts=256,     
     pipeline=train_pipeline)
 
 train_dataset_classbalanced_robo = dict(
@@ -105,6 +126,37 @@ val_dataset_robo = dict(
     ann_file='gt_infos_database_val.pkl',
     data_prefix=dict(pts=''),
     metainfo=dict(classes=classes),
+    input_point_size=256,
+    min_num_pts=256,
+    pipeline=val_pipeline)
+
+############# KITTI dataset config #############
+
+data_root = 'data/kitti_cls'
+
+train_dataset_kitti = dict(
+    type=dataset,
+    data_root=data_root,
+    ann_file='gt_infos_database_train.pkl',
+    data_prefix=dict(pts=''),
+    metainfo=dict(classes=classes),
+    input_point_size=256,
+    min_num_pts=256,
+    pipeline=train_pipeline)
+
+train_dataset_classbalanced_kitti = dict(
+    type='ClassBalancedDataset',
+    dataset=train_dataset_kitti,
+    oversample_thr=0.1,
+)
+
+val_dataset_kitti = dict(
+    type=dataset,
+    data_root=data_root,
+    ann_file='gt_infos_database_val.pkl',
+    data_prefix=dict(pts=''),
+    metainfo=dict(classes=classes),
+    input_point_size=256,
     min_num_pts=256,
     pipeline=val_pipeline)
 
@@ -114,27 +166,38 @@ batch_size = 32
 
 train_dataloader = dict(
     batch_size=32,
-    num_workers=2,
+    num_workers=1,
     collate_fn=dict(type='pseudo_collate'),
     persistent_workers=True,
     dataset=dict(
         type='ConcatDataset',
         shuffle=True,
-        datasets=[train_dataset_classbalanced_robo, train_dataset_classbalanced_osdar]
+        datasets=[train_dataset_classbalanced_robo, train_dataset_classbalanced_osdar, train_dataset_classbalanced_kitti]
     )
 )
 
 val_dataloader = dict(
     batch_size=32,
-    num_workers=2,
+    num_workers=1,
     collate_fn=dict(type='pseudo_collate'),
     persistent_workers=True,
     dataset=dict(
         type='ConcatDataset',
         shuffle=True,
-        datasets=[val_dataset_robo, val_dataset_osdar]
+        datasets=[val_dataset_robo, val_dataset_osdar, val_dataset_kitti]
     )
 )
+
+test_dataloader_generic = dict(
+    batch_size=1,
+    num_workers=1,
+    collate_fn=dict(type='pseudo_collate'),
+    persistent_workers=True,
+    dataset=None
+)
+
+test_dataloader = test_dataloader_generic
+test_evaluator = val_evaluator
 
 ####### Model Config #######
 
@@ -163,7 +226,7 @@ model = dict(
         ),
     cls_head=dict(
         type='PointNet2ClsHead',
-        num_classes=3,  # should be modified with dataset
+        num_classes=4,  # should be modified with dataset
         lin_layers=((1024, 512), (512, 256)),
         dropout_ratio=0.4),
     # model training and testing settings
@@ -219,7 +282,7 @@ param_scheduler = [
 # runtime settings30
 train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=1)
 val_cfg = dict()
-# test_cfg = dict()
+test_cfg = dict()
 
 # Default setting for scaling LR automatically
 #   - `enable` means enable scaling LR automatically
@@ -252,4 +315,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnet_cls_robo_only_training_mixed_osdar_robo_pytorch_impl'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling'

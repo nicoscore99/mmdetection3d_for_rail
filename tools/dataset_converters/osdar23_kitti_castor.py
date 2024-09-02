@@ -140,13 +140,20 @@ class OSDaR23_2_KITTI_Converter(object):
         #     # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
         # }
 
+        # self.class_names = {
+        #     'Pedestrian': ['person', 'crowd'],
+        #     'Car': ['road_vehicle'],
+        #     # 'train': ['train', 'wagons'],
+        #     'Cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
+        #     # 'unknown': ['animal', 'group_of_animals'],
+        #     # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
+        # }
+        
         self.class_names = {
             'Pedestrian': ['person', 'crowd'],
-            'Car': ['road_vehicle'],
-            # 'train': ['train', 'wagons'],
             'Cyclist': ['bicycle', 'group_of_bicycles', 'motorcycle'],
-            # 'unknown': ['animal', 'group_of_animals'],
-            # 'dontcare': ['track', 'catenary_pole', 'signal_pole', 'signal', 'signal_bridge', 'buffer_stop', 'flame', 'smoke', 'switch', 'wheelchair'],
+            'RoadVehicle': ['road_vehicle'],
+            'Train': ['train', 'wagons']
         }
         
         # self.class_names = {

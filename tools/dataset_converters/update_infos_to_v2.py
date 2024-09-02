@@ -27,6 +27,22 @@ from mmdet3d.structures import points_cam2img
 from mmdet3d.datasets.osdar23_dataset import OSDaR23Dataset
 
 
+kategory_mapping = {
+    'Pedestrian': ['Pedestrian'],
+    'Cyclist': ['Cyclist'],
+    'RoadVehicle': ['Car', 'Van', 'Truck'],
+    'Train': ['Train', 'Tram']
+}
+
+kitti_categories_wanted = ['Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck', 'Tram', 'Train']
+
+def map_category_to_kitti(category):
+    for key, value in kategory_mapping.items():
+        if category in value:
+            return key
+    return None
+
+
 def get_empty_instance():
     """Empty annotation for single instance."""
     instance = dict(
@@ -399,8 +415,7 @@ def update_kitti_infos(pkl_path, out_dir):
     # TODO update to full label
     # TODO discuss how to process 'Van', 'DontCare'
     METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck',
-                    'Person_sitting', 'Tram', 'Misc'),
+        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train')
     }
     print(f'Reading from input file: {pkl_path}.')
     data_list = mmengine.load(pkl_path)
@@ -464,10 +479,15 @@ def update_kitti_infos(pkl_path, out_dir):
             for instance_id in range(num_instances):
                 empty_instance = get_empty_instance()
                 empty_instance['bbox'] = anns['bbox'][instance_id].tolist()
+                
+                # ann_name = map_category_to_kitti(anns['name'][instance_id])
 
-                if anns['name'][instance_id] in METAINFO['classes']:
+                if anns['name'][instance_id] in kitti_categories_wanted:
+                    # empty_instance['bbox_label'] = METAINFO['classes'].index(
+                    #     anns['name'][instance_id])
+                    ann_name = map_category_to_kitti(anns['name'][instance_id])
                     empty_instance['bbox_label'] = METAINFO['classes'].index(
-                        anns['name'][instance_id])
+                        ann_name)
                 else:
                     ignore_class_name.add(anns['name'][instance_id])
                     empty_instance['bbox_label'] = -1
@@ -549,7 +569,7 @@ def update_osdar23_infos(pkl_path, out_dir):
     # }
     
     METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car'),
+        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train')
     }
     
     # METAINFO = {
@@ -626,12 +646,25 @@ def update_osdar23_infos(pkl_path, out_dir):
             for instance_id in range(num_instances):
                 empty_instance = get_empty_instance()
                 empty_instance['bbox'] = anns['bbox'][instance_id].tolist()
-                if anns['name'][instance_id] in METAINFO['classes']:
+                
+                
+                # ann_name = map_category_to_kitti(anns['name'][instance_id])
+                if anns['name'][instance_id] in kitti_categories_wanted:
+                    # empty_instance['bbox_label'] = METAINFO['classes'].index(
+                    #     anns['name'][instance_id])
+                    ann_name = map_category_to_kitti(anns['name'][instance_id])
                     empty_instance['bbox_label'] = METAINFO['classes'].index(
-                        anns['name'][instance_id])
+                        ann_name)
                 else:
                     ignore_class_name.add(anns['name'][instance_id])
                     empty_instance['bbox_label'] = -1
+                
+                # if anns['name'][instance_id] in METAINFO['classes']:
+                #     empty_instance['bbox_label'] = METAINFO['classes'].index(
+                #         anns['name'][instance_id])
+                # else:
+                #     ignore_class_name.add(anns['name'][instance_id])
+                #     empty_instance['bbox_label'] = -1
 
                 empty_instance['bbox'] = anns['bbox'][instance_id].tolist()
 

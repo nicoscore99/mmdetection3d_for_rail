@@ -31,6 +31,7 @@ from mmengine.registry import VISUALIZERS as MMENGINE_VISUALIZERS
 from mmengine.registry import \
     WEIGHT_INITIALIZERS as MMENGINE_WEIGHT_INITIALIZERS
 from mmengine.registry import Registry
+from mmengine.registry import UPSAMPLERS as MMENGINE_UPSAMPLERS
 
 # manage all kinds of runners like `EpochBasedRunner` and `IterBasedRunner`
 RUNNERS = Registry(
@@ -139,3 +140,7 @@ INFERENCERS = Registry(
     'inferencer',
     parent=MMENGINE_INFERENCERS,
     locations=['mmdet3d.api.inferencers'])
+
+# manage upsamplers
+UPSAMPLERS = Registry(
+    'upsampler', parent=MMENGINE_UPSAMPLERS, locations=['mmdet3d.upsamplers'])

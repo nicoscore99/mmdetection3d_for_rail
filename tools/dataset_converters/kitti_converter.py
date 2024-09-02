@@ -12,7 +12,22 @@ from mmdet3d.structures.ops import box_np_ops
 from .kitti_data_utils import WaymoInfoGatherer, get_kitti_image_info, get_osdar_image_info
 from .nuscenes_converter import post_process_coords
 
-kitti_categories = ('Pedestrian', 'Cyclist', 'Car')
+# kitti_categories = ('Pedestrian', 'Cyclist', 'Car')
+
+kategory_mapping = {
+    'Pedestrian': 'Pedestrian',
+    'Cyclist': 'Cyclist',
+    'RoadVehicle': ['Car', 'Van', 'Truck'],
+    'Train': 'Tram'
+}
+
+kitti_categories = ['Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck', 'Tram']
+
+def map_category_to_kitti(category):
+    for key, value in kategory_mapping.items():
+        if category in value:
+            return key
+    return None
 
 
 def convert_to_kitti_info_version2(info):
@@ -752,9 +767,14 @@ def generate_record(ann_rec, x1, y1, x2, y2, sample_data_token, filename):
     coco_rec['image_id'] = sample_data_token
     coco_rec['area'] = (y2 - y1) * (x2 - x1)
 
+    # if repro_rec['category_name'] not in kitti_categories:
+    #     return None
+    # cat_name = repro_rec['category_name']
+    
     if repro_rec['category_name'] not in kitti_categories:
         return None
-    cat_name = repro_rec['category_name']
+    
+    cat_name = map_category_to_kitti(repro_rec['category_name'])    
     coco_rec['category_name'] = cat_name
     coco_rec['category_id'] = kitti_categories.index(cat_name)
     coco_rec['bbox'] = [x1, y1, x2 - x1, y2 - y1]

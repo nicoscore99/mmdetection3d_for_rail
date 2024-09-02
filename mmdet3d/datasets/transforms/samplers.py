@@ -1,0 +1,107 @@
+# from scipy.spatial import Voronoi, voronoi_plot_2d, Delaunay, cKDTree
+from mmcv.transforms import BaseTransform
+import pypcd.pypcd as pypcd
+import numpy as np
+import open3d as o3d
+import torch
+import copy
+
+# baseclass abc
+from abc import ABCMeta, abstractmethod
+from mmengine.registry import TRANSFORMS
+
+@TRANSFORMS.register_module()
+class Open3DAlphaShape(BaseTransform):
+    """Base sampler for point cloud data."""
+
+    def __init__(self,
+                 alpha: float = 0.2,
+                 min_points: int = 50,
+                 num_pts_sample: int = 256,
+                    **kwargs):
+        
+        self.alpha = alpha
+        self.min_points = min_points
+        self.num_pts_sample = num_pts_sample
+        
+    def transform(self, data):       
+        _data = copy.deepcopy(data)
+        # _points = data['points'].tensor.numpy()
+
+        # if data is tensor, convert to numpy
+        if torch.is_tensor(data['points'].tensor):
+            _points = data['points'].tensor.numpy()
+        else:
+            _points = data['points'].tensor
+        
+        try:
+            if _points.shape[0] >= self.min_points and _points.shape[0] < self.num_pts_sample:
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(_points)
+                mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, self.alpha)
+                new_points = mesh.sample_points_poisson_disk(self.num_pts_sample)
+                new_points_numpy = np.asarray(new_points)
+                _data['points'].tensor = torch.from_numpy(new_points_numpy).float()
+                _data['num_points_in_gt'] = self.num_pts_sample
+        except Exception as e:
+            print(f"Error: {e}")
+            print(f"Upsampling inpossible for {data['path']}")
+            
+        return _data
+    
+    def __repr__(self) -> str:
+        """str: Return a string that describes the module."""
+        repr_str = self.__class__.__name__ + '('
+        repr_str += f'alpha={self.alpha}, '
+        repr_str += f'min_points={self.min_points}, '
+        repr_str += f'num_pts_sample={self.num_pts_sample})'
+        return repr_str
+    
+    def __call__(self, data: np.ndarray):
+        return self.upsample(data)
+    
+@TRANSFORMS.register_module()
+class Open3DBallPivoting(BaseTransform):
+    
+    def __init__(self,
+                 min_points: int = 50,
+                 num_pts_sample: int = 256,
+                    **kwargs):
+        
+        self.min_points = min_points
+        self.num_pts_sample = num_pts_sample
+        
+    def transform(self, data):
+        
+        # Assert that the data has at least min_points
+        _data = copy.deepcopy(data)
+        _points = data['points'].tensor.numpy()
+
+        try:
+            if _points.shape[0] >= self.min_points and _points.shape[0] < self.num_pts_sample:
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(_points)
+                pcd.estimate_normals()
+                distances = pcd.compute_nearest_neighbor_distance()
+                avg_dist = np.mean(distances)
+                radius = 3 * avg_dist
+                bpa_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd, o3d.utility.DoubleVector([radius, radius * 2]))
+                new_points = bpa_mesh.sample_points_poisson_disk(self.num_pts_sample).points
+                # turn points to float32
+                new_points_numpy = np.asarray(new_points)
+                _data['points'].tensor = torch.from_numpy(new_points_numpy).float()
+                _data['num_points_in_gt'] = self.num_pts_sample
+        except Exception as e:
+            print(f"Error: {e}")
+            print(f"Upsampling inpossible for {data['path']}")
+            
+        return _data
+    
+    def __repr__(self) -> str:
+        """str: Return a string that describes the module."""
+        repr_str = self.__class__.__name__ + '('
+        repr_str += f'radius={self.radius}, '
+        repr_str += f'min_points={self.min_points}, '
+        repr_str += f'num_pts_sample={self.num_pts_sample})'
+        return repr_str
+        

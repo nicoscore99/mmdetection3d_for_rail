@@ -17,6 +17,7 @@ from mmdet3d.structures import (CameraInstance3DBoxes, DepthInstance3DBoxes,
 from mmdet3d.utils import ConfigType
 from .base_3d_inferencer import Base3DInferencer
 
+
 InstanceList = List[InstanceData]
 InputType = Union[str, np.ndarray]
 InputsType = Union[InputType, Sequence[InputType]]

@@ -20,6 +20,7 @@ from .transforms_3d import (AffineResize, BackgroundPointsFilter,
                             RandomFlip3D, RandomJitterPoints, RandomResize3D,
                             RandomShiftScale, Resize3D, VoxelBasedPointSampler)
 
+from .samplers import Open3DAlphaShape, Open3DBallPivoting
 from .loading_classification import LoadAnnotationsCls, LoadPointsFromFileForClassification
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     'RandomShiftScale', 'LoadPointsFromDict', 'Resize3D', 'RandomResize3D',
     'MultiViewWrapper', 'PhotoMetricDistortion3D', 'MonoDet3DInferencerLoader',
     'LidarDet3DInferencerLoader', 'PolarMix', 'LaserMix',
-    'MultiModalityDet3DInferencerLoader', 'LoadAnnotationsCls', 'PackClsInputs'
+    'MultiModalityDet3DInferencerLoader', 'LoadAnnotationsCls', 'PackClsInputs',
+    'Open3DAlphaShape', 'Open3DBallPivoting', 'LoadPointsFromFileForClassification'
 ]

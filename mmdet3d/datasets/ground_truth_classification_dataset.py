@@ -2,7 +2,7 @@ from typing import Callable, List, Optional, Set, Union
 
 import numpy as np
 
-from mmdet3d.registry import DATASETS
+from mmdet3d.registry import DATASETS, UPSAMPLERS
 from mmdet3d.structures import CameraInstance3DBoxes
 from .det3d_dataset import Det3DDataset
 from mmengine.dataset import BaseDataset
@@ -64,10 +64,8 @@ class GroundTruthClassificationDataset(BaseDataset):
     """
     
     METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck',
-                    'Person_sitting', 'Tram', 'Misc'),
-        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192),
-                    (197, 226, 255), (0, 60, 100), (0, 0, 142), (255, 77, 255)]
+        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
+        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
     }
     
     def __init__(self,
@@ -77,13 +75,15 @@ class GroundTruthClassificationDataset(BaseDataset):
                     metainfo: Optional[dict] = None,
                     modality: dict = dict(use_lidar=True),
                     data_prefix: dict = dict(pts='velodyne', img=''),
-                    min_num_pts: int = 1024,
+                    input_point_size: int = 256,
+                    min_num_pts: int = 50,
                     box_type_3d: dict = 'LiDAR',
                     test_mode = False,
                     max_refetch: int = 1000,
                     **kwargs):
         
             self.min_num_pts = min_num_pts
+            self.input_point_size = input_point_size
             _default_modality_keys = ('use_lidar', 'use_camera')
             if modality is None:
                 modality = dict()
@@ -125,7 +125,6 @@ class GroundTruthClassificationDataset(BaseDataset):
                 self.label_mapping[-1] = -1
 
                 self.num_ins_per_cat = [0] * len(self.METAINFO['classes'])
-
             
             super().__init__(
                 ann_file=ann_file,
@@ -249,7 +248,9 @@ class GroundTruthClassificationDataset(BaseDataset):
             # after pipeline drop the example with empty annotations
             # return None to random another in `__getitem__`
             num_pts = example['data_samples'].num_points_in_gt
-            if example is None or example['data_samples'].num_points_in_gt < self.min_num_pts:
+            if example is None:
+                return None
+            if num_pts < self.min_num_pts:
                 return None
 
         return example
