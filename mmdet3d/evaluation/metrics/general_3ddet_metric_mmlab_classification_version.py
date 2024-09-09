@@ -7,11 +7,14 @@ from abc import ABC, abstractmethod
 import json
 
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import pprint
 import bbox
 import torch
 import pandas as pd
 from sklearn import metrics as sk_metrics
+
+import open3d as o3d
 
 import mmengine
 import numpy as np
@@ -29,7 +32,7 @@ from mmdet3d.structures import (Box3DMode, CameraInstance3DBoxes,
                                 LiDARInstance3DBoxes, points_cam2img)
 
 @METRICS.register_module()
-class General_3dDet_Metric_MMLab(BaseMetric):
+class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
     """Kitti evaluation metric.
 
     Args:
@@ -74,16 +77,17 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  collect_device: str = 'cpu',
                  save_graphics: Optional[bool] = False,
                  save_evaluation_results: Optional[bool] = False,
-                 difficulty_levels: Optional[List[float]] = [0.1, 0.3, 0.5, 0.7],
+                 difficulty_levels: Optional[List[float]] = [0.05, 0.1, 0.3, 0.5, 0.7],
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  evaluation_file_name: Optional[str] = 'evaluation_results.json',
                  backend_args: Optional[dict] = None,
                  save_random_viz: Optional[bool] = False,
-                 random_viz_keys: Optional[int] = None) -> 5:
+                 random_viz_keys: Optional[int] = None,
+                 classifcation_conf_threshold: Optional[float] = 0.85):
     
         self.default_prefix = 'General 3D Det metric mmlab'
-        super(General_3dDet_Metric_MMLab, self).__init__(collect_device=collect_device, prefix=prefix)
+        super(General_3dDet_Metric_MMLab_Classification_Version, self).__init__(collect_device=collect_device, prefix=prefix)
         self.pcd_limit_range = pcd_limit_range
         self.ann_file = ann_file
         self.pklfile_prefix = pklfile_prefix
@@ -101,6 +105,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         self.metric = metric
         self.num_random_keys_to_be_visualized = random_viz_keys
         self.save_random_viz = save_random_viz
+        self.classifcation_conf_threshold = classifcation_conf_threshold
 
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
@@ -132,9 +137,12 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             os.makedirs(self.output_dir)
 
     def process(self, data_batch: dict, data_samples: Sequence[dict]) -> dict:
+        
+        _data_batch = copy.deepcopy(data_batch)
+        _data_batch['results'] = data_samples
 
         # Append the datasamples Sequence to the results list
-        self.results += data_samples
+        self.results.append(_data_batch)
 
     def compute_metrics(self, results: List[dict]) -> Dict[str, float]:
         """Compute the metrics from processed results.
@@ -237,16 +245,17 @@ class General_3dDet_Metric_MMLab(BaseMetric):
     def convert_gt_from_results(self, results: List[dict]) -> dict:
 
         gt_dict = dict()
-        for data_sample in results:
+        for result in results:
+            data_sample = result['data_samples'][0]
 
-            sample_idx = data_sample['lidar_path']
+            sample_idx = data_sample.lidar_path
             gt_bboxes = InstanceData()
             # If 'gt_labels_3d' is not a tensor, convert it to a tensor
-            if not isinstance(data_sample['eval_ann_info']['gt_labels_3d'], torch.Tensor):
-                data_sample['eval_ann_info']['gt_labels_3d'] = torch.from_numpy(data_sample['eval_ann_info']['gt_labels_3d'])
+            if not isinstance(data_sample.eval_ann_info['gt_labels_3d'], torch.Tensor):
+                data_sample.eval_ann_info['gt_labels_3d'] = torch.from_numpy(data_sample.eval_ann_info['gt_labels_3d'])
             
-            gt_bboxes.bboxes_3d = data_sample['eval_ann_info']['gt_bboxes_3d'].tensor.to('cpu')
-            gt_bboxes.labels_3d = data_sample['eval_ann_info']['gt_labels_3d'].to('cpu')
+            gt_bboxes.bboxes_3d = data_sample.eval_ann_info['gt_bboxes_3d'].tensor.to('cpu')
+            gt_bboxes.labels_3d = data_sample.eval_ann_info['gt_labels_3d'].to('cpu')
             gt_dict[sample_idx] = gt_bboxes
 
         return gt_dict  
@@ -308,20 +317,69 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             percentage = round((num_bbox_after / num_bbox_before) * 100, 2)            
         return annos_valid, percentage
         
+    def convert_bbox_3d_from_classificaton(self, bboxes_3d: list) -> torch.Tensor:
+        
+        list_of_bboxes = []
+        for tup in bboxes_3d:
+            # iterate through tuple
+            for i in range(len(tup)):
+                # check if the element is a tensor
+                tup_temp = tup[i]
+                list_of_bboxes.append(tup_temp)
+        
+        if list_of_bboxes:            
+            list_of_bboxes = torch.stack(list_of_bboxes)
+        else:
+            list_of_bboxes = torch.empty((0,7))
+
+        return list_of_bboxes
+            
+    def get_labels_from_results(self, _cls_results: List[dict]) -> List[torch.Tensor]:
+        
+        labels = []
+        scores = []
+        for _x in _cls_results:
+            #_x is tensor([-5.3567, -2.4265, -0.1085, -4.6258])            
+            prob_vec = torch.exp(_x)
+            # get the class with the highest probability
+            label = torch.argmax(prob_vec)
+            conf = torch.max(prob_vec)
+            
+            if conf < self.classifcation_conf_threshold:
+                label = torch.tensor(-1)
+            
+            scores.append(conf)
+            labels.append(label)
+
+        if labels and scores:
+            labels = torch.stack(labels)
+            scores = torch.stack(scores)
+        else:
+            labels = torch.tensor([])
+            scores = torch.tensor([])
+
+        return labels, scores
+        
     def convert_dt_from_results(self, results: List[dict]) -> dict:
         
         dt_dict = dict()
-        for data_sample in results:
-                sample_idx = data_sample['lidar_path']
-                dt_bboxes = InstanceData()
+        for result in results:
+            data_sample = result['data_samples'][0]
+            classification_input = result['inputs']
+            classification_results = result['results']
+            
+            sample_idx = data_sample.lidar_path
+            
+            dt_bboxes = InstanceData()
+            bboxes = self.convert_bbox_3d_from_classificaton(classification_input['bboxes'])
 
-                if not isinstance(data_sample['pred_instances_3d']['labels_3d'], torch.Tensor):
-                    data_sample['pred_instances_3d']['labels_3d'] = torch.from_numpy(data_sample['pred_instances_3d']['labels_3d'])
+            # boxes does not contain equal length as labels, scores...
 
-                dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d'].tensor.to('cpu')
-                dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d'].to('cpu')
-                dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d'].to('cpu')
-                dt_dict[sample_idx] = dt_bboxes
+            dt_bboxes.bboxes_3d = bboxes
+            labels, scores = self.get_labels_from_results(classification_results)
+            dt_bboxes.labels_3d = labels
+            dt_bboxes.scores = scores
+            dt_dict[sample_idx] = dt_bboxes
 
         return dt_dict
     
@@ -923,55 +981,7 @@ def show_projections(key, gt_3d_bboxes, dt_3d_bboxes):
         
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    
-    # Three horizontally aligned plots
-    # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
-    # ax1, ax2, ax3 = axs
-    
-    # # Birds eye view on ax1
-    # for i in range(gt_3d_bboxes.shape[0]):
-    #     gt_bbox = gt_3d_bboxes[i]
-    #     corners = np.array([
-    #         [-gt_bbox[3]/2, -gt_bbox[4]/2],
-    #         [gt_bbox[3]/2, -gt_bbox[4]/2],
-    #         [gt_bbox[3]/2, gt_bbox[4]/2],
-    #         [-gt_bbox[3]/2, gt_bbox[4]/2]
-    #     ])
-        
-    #     theta = np.radians(gt_bbox[6])
-    #     R = np.array([
-    #         [np.cos(theta), -np.sin(theta)],
-    #         [np.sin(theta), np.cos(theta)]
-    #     ])
-        
-    #     rotated_corners = corners.dot(R)
-    #     translated_corners = np.add(rotated_corners, gt_bbox[:2].cpu().numpy())
-        
-    #     square = plt.Polygon(translated_corners, fill=None, edgecolor='green',  linestyle='--', closed=True)
-    #     ax1.add_patch(square)
-        
-        
-    # for i in range(dt_3d_bboxes.shape[0]):
-    #     gt_bbox = dt_3d_bboxes[i]
-    #     corners = np.array([
-    #         [-gt_bbox[3]/2, -gt_bbox[4]/2],
-    #         [gt_bbox[3]/2, -gt_bbox[4]/2],
-    #         [gt_bbox[3]/2, gt_bbox[4]/2],
-    #         [-gt_bbox[3]/2, gt_bbox[4]/2]
-    #     ])
-        
-    #     theta = np.radians(gt_bbox[6])
-    #     R = np.array([
-    #         [np.cos(theta), -np.sin(theta)],
-    #         [np.sin(theta), np.cos(theta)]
-    #     ])
-        
-    #     rotated_corners = corners.dot(R)
-    #     translated_corners = np.add(rotated_corners, gt_bbox[:2].cpu().numpy())
-        
-    #     square = plt.Polygon(translated_corners, fill=None, edgecolor='red', linestyle='--', closed=True)
-    #     ax1.add_patch(square)
-    
+
     # Corner points of the 3D bounding box ground truth
     for i in range(gt_3d_bboxes.shape[0]):
         gt_box_3d = gt_3d_bboxes[i]        
@@ -1071,15 +1081,30 @@ def show_projections(key, gt_3d_bboxes, dt_3d_bboxes):
         return
     
     # Set the limits for the complete figure
-    ax.set_xlim(x_lower, x_upper)
-    ax.set_ylim(y_lower, y_upper)
-    ax.set_zlim(z_lower, z_upper)
+    # ax.set_xlim(x_lower, x_upper)
+    # ax.set_ylim(y_lower, y_upper)
+    # ax.set_zlim(z_lower, z_upper)
+    
+    # Calculate the ranges for each axis
+    x_range = x_upper - x_lower
+    y_range = y_upper - y_lower
+    z_range = z_upper - z_lower
 
-    # Apply the calculated aspect ratio
-    ax.set_aspect('equal')
+    # Determine the maximum range
+    max_range = max(x_range, y_range, z_range)
+
+    # Calculate the midpoints for each axis
+    x_mid = (x_upper + x_lower) / 2
+    y_mid = (y_upper + y_lower) / 2
+    z_mid = (z_upper + z_lower) / 2
+    
+    ax.set_xlim3d(x_mid - max_range / 2, x_mid + max_range / 2)
+    ax.set_ylim3d(y_mid - max_range / 2, y_mid + max_range / 2)
+    ax.set_zlim3d(z_mid - max_range / 2, z_mid + max_range / 2)
+
     scale = vertices.flatten()
     ax.auto_scale_xyz(scale, scale, scale)
         
-    # plt.show(block=True)
+    plt.show(block=True)
 
     return fig

@@ -73,8 +73,8 @@ class Open3DBallPivoting(BaseTransform):
         
     def transform(self, data):
         
-        # Assert that the data has at least min_points
         _data = copy.deepcopy(data)
+    
         _points = data['points'].tensor.numpy()
 
         try:
@@ -94,6 +94,76 @@ class Open3DBallPivoting(BaseTransform):
         except Exception as e:
             print(f"Error: {e}")
             print(f"Upsampling inpossible for {data['path']}")
+            
+        return _data
+    
+    def __repr__(self) -> str:
+        """str: Return a string that describes the module."""
+        repr_str = self.__class__.__name__ + '('
+        repr_str += f'radius={self.radius}, '
+        repr_str += f'min_points={self.min_points}, '
+        repr_str += f'num_pts_sample={self.num_pts_sample})'
+        return repr_str
+
+@TRANSFORMS.register_module()
+class Open3DBallPivotingSequence(BaseTransform):
+    
+    def __init__(self,
+                 min_points: int = 50,
+                 num_pts_sample: int = 256,
+                    **kwargs):
+        
+        self.min_points = min_points
+        self.num_pts_sample = num_pts_sample
+        
+    def transform(self, data):
+        
+        _data = copy.deepcopy(data)
+        
+        inputs = _data['inputs']
+        points = inputs['points']
+        
+        # If the points are not a sequence, make it a list
+        if not isinstance(points, list):
+            points = [points]
+            
+        new_points_list = []
+        new_boxes_list = []
+            
+        for i, cloud in enumerate(points):
+            
+            # if cloud is tensor, to cpu numpy
+            _cloud = cloud
+            if isinstance(cloud, torch.Tensor):
+                _cloud = cloud.cpu().numpy()
+
+            try:
+                if _cloud.shape[0] >= self.min_points and _cloud.shape[0] < self.num_pts_sample:
+                    pcd = o3d.geometry.PointCloud()
+                    pcd.points = o3d.utility.Vector3dVector(_cloud)
+                    pcd.estimate_normals()
+                    distances = pcd.compute_nearest_neighbor_distance()
+                    avg_dist = np.mean(distances)
+                    radius = 3 * avg_dist
+                    bpa_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd, o3d.utility.DoubleVector([radius, radius * 2]))
+                    new_points = bpa_mesh.sample_points_poisson_disk(self.num_pts_sample).points
+                    # turn points to float32
+                    new_points_numpy = np.asarray(new_points)
+                    # _data['points'].tensor = torch.from_numpy(new_points_numpy).float()
+                    # _data['num_points_in_gt'] = self.num_pts_sample
+                    # new_points_list.append(torch.from_numpy(new_points_numpy).float())
+                    # new_boxes_list.append(inputs['bboxes'][i])
+                    _cloud = torch.from_numpy(new_points_numpy).float()
+            except Exception as e:
+                print(f"Error: {e}")
+                print(f"Upsampling inpossible for cloud {i} with {cloud.shape[0]} points")
+
+            new_points_list.append(_cloud)
+            new_boxes_list.append(inputs['bboxes'][i])
+            
+        inputs['points'] = new_points_list
+        inputs['bboxes'] = new_boxes_list
+        _data['inputs'] = inputs
             
         return _data
     

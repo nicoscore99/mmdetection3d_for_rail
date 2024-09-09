@@ -24,7 +24,7 @@ class PointCloudClsMetric(BaseMetric):
     def __init__(self, 
                  class_names: List[str],
                  save_graphics: bool = False,
-                 save_evaluation_resutls: bool = False):
+                 save_evaluation_resutls: bool = True):
         
         super().__init__()
         
@@ -60,6 +60,21 @@ class PointCloudClsMetric(BaseMetric):
         for sample in ground_truth_list:
             ytrue.append(sample.ann_info['class_idx'])
         return np.array(ytrue)
+
+    def save_results(self, results: List, ytrue: List):
+
+        with open('results.txt', 'a') as f:
+            
+            # result is a tensor like [-0.0711, -4.3492, -2.8881] form log softmax, cast to csv format
+
+            for result in results:
+                f.write(','.join([str(x) for x in result.tolist()]) + '\n')
+
+        with open('ground_truth.txt', 'a') as f:
+            for y in ytrue:
+                f.write(str(y) + '\n')
+
+        print('Results and ground truth saved')
     
     def compute_metrics(self, results: List) -> Dict:
         
@@ -75,6 +90,9 @@ class PointCloudClsMetric(BaseMetric):
         # Reset the ground truth and results
         self.ground_truth = []
         self.results = []
+
+        if self.save_evaluation_resutls:
+            self.save_results(results, y_true)
         
         return {'evaluations': {'accuracy': accuracy,
                                  'precision': precision,

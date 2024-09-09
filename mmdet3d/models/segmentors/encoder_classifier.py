@@ -34,6 +34,7 @@ class EncoderCls3D(BaseModel):
         test_cfg (OptConfigType): Config of testing. Defaults to None.
         data_preprocessor (OptConfigType): Config of data preprocessing. Defaults to None.
         init_cfg (OptMultiConfig): Config of initialization. Defaults to None.
+        min_points (int): Number of points required to run the inference. Ignored if None. Defaults to 256.
     """
 
     def __init__(self,
@@ -44,6 +45,7 @@ class EncoderCls3D(BaseModel):
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  data_preprocessor: OptConfigType = None,
+                 num_pts_sample: OptConfigType = None,
                  init_cfg: OptMultiConfig = None) -> None:
         super(EncoderCls3D, self).__init__(
             data_preprocessor=data_preprocessor, init_cfg=init_cfg)
@@ -52,6 +54,7 @@ class EncoderCls3D(BaseModel):
             self.neck = MODELS.build(neck)
         self._init_cls_head(cls_head)
         self._init_loss_regularization(loss_regularization)
+        self.num_pts_sample = num_pts_sample
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
@@ -154,6 +157,7 @@ class EncoderCls3D(BaseModel):
         Returns:
             Tensor: Classification logits of shape [B, num_classes].
         """
+        
         x = self.extract_feat(batch_inputs)
         classification = self.cls_head.predict(x, batch_input_metas,
                                               self.test_cfg)
@@ -272,7 +276,6 @@ class EncoderCls3D(BaseModel):
                         rescale: bool) -> Tensor:
         """Inference with full scene (one forward pass without sliding)."""
         cls_logic = self.encode_classify(points, batch_input_metas)
-        # TODO: if rescale and voxelization segmentor
         return cls_logic
 
     def inference(self, points: Tensor, batch_input_metas: List[dict],
@@ -318,8 +321,26 @@ class EncoderCls3D(BaseModel):
         #     inf = self.inference(
         #         point.unsqueeze(0), [input_meta], rescale)[0]
         #     cls_list.append(inf)
-
+        
         for _points in points:
+            if isinstance(_points, tuple):
+                _points = _points[0]
+
+            # check if torch tensor, if not, convert to torch tensor
+            if not isinstance(_points, torch.Tensor):
+                _points = torch.tensor(_points)
+
+            # if cuda is available, move to cuda
+            if torch.cuda.is_available() and not _points.is_cuda:
+                _points = _points.cuda()
+                
+            if self.num_pts_sample is not None:
+                if _points.shape[0] < self.num_pts_sample:
+                    # Less than the minimally required number of points
+                    # Skip this sample and append a tensor with high negative numbers
+                    cls_list.append(torch.tensor([-1e6] * self.num_classes))
+                    continue
+
             inf = self.inference(
                 _points.unsqueeze(0), [], rescale)[0]
             cls_list.append(inf)

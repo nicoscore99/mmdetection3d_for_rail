@@ -183,6 +183,13 @@ class PointNetSetAbstraction(nn.Module):
             new_xyz: sampled points position data, [B, C, S]
             new_points_concat: sample points feature data, [B, D', S]
         """
+        
+        # if xyz, points not on cuda, to cuda
+        if not xyz.is_cuda:
+            xyz = xyz.cuda()
+        if points is not None and not points.is_cuda:
+            points = points.cuda()
+        
         xyz = xyz.permute(0, 2, 1)
         if points is not None:
             points = points.permute(0, 2, 1)

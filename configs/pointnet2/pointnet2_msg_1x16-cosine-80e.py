@@ -1,10 +1,8 @@
-custom_imports = dict(
-    imports=['mmdet3d.apis.inferencers.lidar_classification_inferencers',
-             'mmdet3d.models.data_preprocessors.cls_data_preprocessor',
-             'mmdet3d.models.segmentors.encoder_classifier'],
-    allow_failed_imports=False)
-
-from mmdet3d.models.data_preprocessors import Cls3DDataPreprocessor
+# custom_imports = dict(
+#     imports=['mmdet3d.apis.inferencers.lidar_classification_inferencers',
+#              'mmdet3d.models.data_preprocessors.cls_data_preprocessor',
+#              'mmdet3d.models.segmentors.encoder_classifier'],
+#     allow_failed_imports=False)
 
 # custom_imports = dict(
 #     imports=['mmdet3d.apis.inferencers.lidar_classification_inferencers',
@@ -14,19 +12,18 @@ from mmdet3d.models.data_preprocessors import Cls3DDataPreprocessor
 #                 'mmdet3d.models.segmentors.encoder_classifer'],
 #     allow_failed_imports=False)
 
-
 ######## Additional Hooks ########
 
-custom_hooks = [
-    dict(type='WandbLoggerHook', 
-         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling',
-         log_artifact=True,
-         init_kwargs={
-             'entity': 'railsensing',
-             'project': 'classification',
-             'name': 'rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling',
-        })
-]
+# custom_hooks = [
+#     dict(type='WandbLoggerHook', 
+#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size',
+#          log_artifact=True,
+#          init_kwargs={
+#              'entity': 'railsensing',
+#              'project': 'classification',
+#              'name': 'rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size',
+#         })
+# ]
 
 ####### Dataset Config #######
 dataset = 'GroundTruthClassificationDataset'
@@ -197,6 +194,7 @@ test_dataloader_generic = dict(
 )
 
 test_dataloader = test_dataloader_generic
+# test_dataloader = val_dataloader
 test_evaluator = val_evaluator
 
 ####### Model Config #######
@@ -315,4 +313,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling'
+work_dir = 'test_cls'
