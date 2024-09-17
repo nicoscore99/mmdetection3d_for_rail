@@ -95,7 +95,6 @@ def trigger_visualization_hook(cfg, args):
 
     return cfg
 
-
 def main():
     args = parse_args()
 

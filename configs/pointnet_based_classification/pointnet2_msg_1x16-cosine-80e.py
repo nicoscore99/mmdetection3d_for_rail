@@ -14,16 +14,16 @@
 
 ######## Additional Hooks ########
 
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'classification',
-#              'name': 'rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size',
-#         })
-# ]
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'classification',
+             'name': 'rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling',
+        })
+]
 
 ####### Dataset Config #######
 dataset = 'GroundTruthClassificationDataset'
@@ -42,7 +42,7 @@ train_pipeline = [
     dict(type='Open3DBallPivoting',
          min_points=50,
          num_pts_sample=256),        
-    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
+    # dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
     dict(
         type='GlobalRotScaleTrans',
         rot_range=[-0.78539816, 0.78539816],
@@ -203,8 +203,9 @@ test_evaluator = val_evaluator
 model = dict(
     type='EncoderCls3D',
     data_preprocessor=dict(
-        type='Cls3DDataPreprocessor',
-        normalize='True',
+        type='Cls3DDataPreprocessorEvaluation',
+        normalize_mean='True',
+        normalize_size='True',
         downsample='True',
         num_pts_downsample=256),    
     backbone=dict(
@@ -215,12 +216,6 @@ model = dict(
         num_samples=(32, 64, 64),
         sa_channels=((64, 64, 128), (128, 128, 256), (256, 512, 1024)),
         fp_channels=(),
-        # norm_cfg=dict(type='BN2d'),
-        # sa_cfg=dict(
-        #     type='PointSAModule',
-        #     pool_mod='max',
-        #     use_xyz=True,
-        #     normalize_xyz=False)
         ),
     cls_head=dict(
         type='PointNet2ClsHead',
@@ -228,9 +223,9 @@ model = dict(
         lin_layers=((1024, 512), (512, 256)),
         dropout_ratio=0.4),
     # model training and testing settings
+    num_pts_sample=256,
     train_cfg=dict(),
     test_cfg=dict(mode='whole'))
-
 #### Schedule Config ####
 
 lr = 0.0001
@@ -313,4 +308,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = 'test_cls'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling'

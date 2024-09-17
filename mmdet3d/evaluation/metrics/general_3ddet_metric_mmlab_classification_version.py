@@ -14,22 +14,14 @@ import torch
 import pandas as pd
 from sklearn import metrics as sk_metrics
 
-import open3d as o3d
-
-import mmengine
 import numpy as np
 import copy
-from mmengine import load
 from mmengine.evaluator import BaseMetric
-from mmengine.logging import MMLogger, print_log
+from mmengine.logging import print_log
 from mmdet3d.registry import METRICS
-from mmdet3d.structures.bbox_3d import LiDARInstance3DBoxes
 from mmdet3d.models.task_modules.assigners.max_3d_iou_assigner import Max3DIoUAssigner
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mmengine.structures import InstanceData
-
-from mmdet3d.structures import (Box3DMode, CameraInstance3DBoxes,
-                                LiDARInstance3DBoxes, points_cam2img)
 
 @METRICS.register_module()
 class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
@@ -77,7 +69,7 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
                  collect_device: str = 'cpu',
                  save_graphics: Optional[bool] = False,
                  save_evaluation_results: Optional[bool] = False,
-                 difficulty_levels: Optional[List[float]] = [0.05, 0.1, 0.3, 0.5, 0.7],
+                 difficulty_levels: Optional[List[float]] = [0.001, 0.05, 0.1, 0.3, 0.5, 0.7],
                  classes: Optional[List[str]] = None,
                  output_dir: Optional[str] = None,
                  evaluation_file_name: Optional[str] = 'evaluation_results.json',
@@ -206,21 +198,33 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
 
         ######## Evaluation ########
         
-        evaluation_results_dict['ap'] = self.evaluator.options_frame_metrics(method='ap', 
-                                                                             iou_level=self.difficulty_levels,
-                                                                             class_accuracy_requirements=['easy'])
+        ap_dict = self.evaluator.options_frame_metrics(method='ap', 
+                                                            iou_level=self.difficulty_levels,
+                                                            class_accuracy_requirements=['easy'])
         
-        evaluation_results_dict['precision'] = self.evaluator.options_frame_metrics(method='precision',
-                                                                                    iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements=['easy'])
+        evaluation_results_dict.update(ap_dict)
+        
+        precision_dict = self.evaluator.options_frame_metrics(method='precision',
+                                                                iou_level=self.difficulty_levels,
+                                                                class_accuracy_requirements=['easy', 'hard'])
+        
+        evaluation_results_dict.update(precision_dict)
 
-        evaluation_results_dict['recall'] = self.evaluator.options_frame_metrics(method='recall',
-                                                                                    iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements=['easy'])
+        precision_neglecting_unknowns = self.evaluator.options_frame_metrics(method='precision_neglecting_unknowns',
+                                                                                iou_level=self.difficulty_levels,
+                                                                                class_accuracy_requirements=['easy'])
+        
+        evaluation_results_dict.update(precision_neglecting_unknowns)
+
+        recall_dict = self.evaluator.options_frame_metrics(method='recall',
+                                                            iou_level=self.difficulty_levels,
+                                                            class_accuracy_requirements=['easy', 'hard'])
+        
+        evaluation_results_dict.update(recall_dict)      
 
         curves_dict['prec'] = self.evaluator.options_frame_curves(method='precision_recall_curve', iou_level=0.3)
         curves_dict['roc'] = self.evaluator.options_frame_curves(method='roc_curve', iou_level=0.3)
-        # curves_dict['cm'] = self.evaluator.options_frame_curves(method='confusion_matrix', iou_level=0.3)
+        curves_dict['cm'] = self.evaluator.options_frame_curves(method='confusion_matrix', iou_level=0.3)
 
         ######## Visualization ########
 
@@ -236,6 +240,9 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
             save_path = osp.join(self.output_dir, self.evaluation_file_name)
             with open(save_path, 'w') as f:
                 json.dump(evaluation_results_dict, f, indent=4)
+            
+            for lev in self.difficulty_levels:
+                self.evaluator.save_threshold_specific_results(level=lev, output_dir=self.output_dir)
 
         ######## Visualization of random keys ########
         self.visualize_random_keys(_gt_annos=gt_annos_valid, _dt_annos=dt_annos_valid, num_keys=self.num_random_keys_to_be_visualized)
@@ -500,6 +507,7 @@ class EvaluatorMetrics():
         self.metrics_method = {
             'ap': self.ap,
             'precision': self.precision,
+            'precision_neglecting_unknowns': self.precision_neglecting_unknowns,
             'recall': self.recall
         }
         
@@ -592,7 +600,7 @@ class EvaluatorMetrics():
             'dt_max_overlaps': torch.cat(dt_max_overlaps),
             'dt_assigned_labels': torch.cat(dt_assigned_labels),
             'gt_labels': torch.cat(gt_labels),
-            'gt_assigned_or_not_binary': torch.cat(gt_assigned_or_not_binary)            
+            'gt_assigned_or_not_binary': torch.cat(gt_assigned_or_not_binary),        
         }
                             
         self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
@@ -633,7 +641,7 @@ class EvaluatorMetrics():
         
         """                   
         
-        tp_criterion = filtered_dict['dt_labels'] == filtered_dict['dt_assigned_labels']
+        tp_criterion = (filtered_dict['dt_labels'] == filtered_dict['dt_assigned_labels']) & (filtered_dict['dt_labels'] != -1)
         tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
         return tp_binary
 
@@ -653,7 +661,7 @@ class EvaluatorMetrics():
             
         """
         
-        tp_criterion = filtered_dict['dt_assigned_gt_indices'] > 0
+        tp_criterion = (filtered_dict['dt_assigned_gt_indices'] > 0)
         tp_binary = torch.where(tp_criterion, torch.tensor(1), torch.tensor(0))
         return tp_binary
     
@@ -807,6 +815,49 @@ class EvaluatorMetrics():
         tp = dt_tp_binary.sum().item()
         fp = len(results_dict['dt_labels']) - tp
         precision = tp / (tp + fp)
+        
+        return round(precision, 3)
+    
+    def precision_neglecting_unknowns(self,
+                level: float,
+                class_accuracy_requirement: str,
+                class_idx: Optional[int] = None) -> float:
+        
+        """
+        
+        Precision score, neglecting all detectins that were classified 'unknown'.
+        
+        Args:
+            level (float): The IoU level.
+            class_accuracy_requirement (str): The class accuracy requirement.
+            class_idx (Optional[int]): The class index. Defaults to None.
+            
+        Returns:    
+            float: The precision score.
+        
+        """
+        
+        if not level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(level)
+            
+        results_dict = self.threshold_specific_results_dict[level]
+        
+        if class_idx is not None:
+            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+            
+        dt_tp_binary = self.class_accuracy_requirement_map['easy'](filtered_dict=results_dict)
+        
+        # prevent case of no detections
+        if dt_tp_binary.nelement() == 0 or results_dict['dt_labels'].nelement() == 0:
+            return 0.0
+        
+        known_bounding_boxes = results_dict['dt_labels'] != -1
+        known_bounding_boxes_assinged = (results_dict['dt_labels'] != -1) & dt_tp_binary
+        
+        all_pos = known_bounding_boxes.numpy().sum()
+        num_pos = known_bounding_boxes_assinged.numpy().sum()
+        
+        precision = num_pos / all_pos
         
         return round(precision, 3)
     
@@ -974,6 +1025,33 @@ class EvaluatorMetrics():
         method: str,
         iou_level: float):
         return self.curves_method[method](iou_level)
+    
+    def save_threshold_specific_results(self, level: float, output_dir: str):
+        if not level in self.threshold_specific_results_dict.keys():
+                self.val_batch_evaluation(level)
+                
+        results_dict = self.threshold_specific_results_dict[level]
+        
+        results_dict_np = {k: v.cpu().numpy() for k, v in results_dict.items()}
+        
+        tp_binary_easy = self.tp_detection(filtered_dict=results_dict).cpu().numpy()
+        tp_binary_hard = self.tp_detection_and_label(filtered_dict=results_dict).cpu().numpy()
+        
+        results_dict_np['tp_binary_easy'] = tp_binary_easy
+        results_dict_np['tp_binary_hard'] = tp_binary_hard
+        
+        # remove 'gt_labels' and 'gt_assigned_or_not_binary' from the results_dict_np
+        results_dict_np.pop('gt_labels')
+        results_dict_np.pop('gt_assigned_or_not_binary')
+        
+        # assert that all key values have equal lenght
+        assert len(results_dict_np['dt_labels']) == len(results_dict_np['dt_scores']) == len(results_dict_np['dt_assigned_gt_indices']) == len(results_dict_np['dt_max_overlaps']) == len(results_dict_np['dt_assigned_labels'])
+        
+        df = pd.DataFrame(results_dict_np)
+        
+        df.to_csv(osp.join(output_dir, f'threshold_specific_results_{level}.csv'), index=False)
+        
+        print(f"Threshold specific results for level {level} saved successfully.")
     
 ####### Helper functions #######
 

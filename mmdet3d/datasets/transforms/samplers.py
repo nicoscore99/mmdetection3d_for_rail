@@ -36,12 +36,16 @@ class Open3DAlphaShape(BaseTransform):
         
         try:
             if _points.shape[0] >= self.min_points and _points.shape[0] < self.num_pts_sample:
+                num_pts_to_generate = self.num_pts_sample - _points.shape[0]
                 pcd = o3d.geometry.PointCloud()
                 pcd.points = o3d.utility.Vector3dVector(_points)
                 mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, self.alpha)
-                new_points = mesh.sample_points_poisson_disk(self.num_pts_sample)
+                new_points = mesh.sample_points_poisson_disk(num_pts_to_generate)
                 new_points_numpy = np.asarray(new_points)
-                _data['points'].tensor = torch.from_numpy(new_points_numpy).float()
+                _new_cloud = torch.from_numpy(new_points_numpy).float()
+                _points = torch.from_numpy(_points).float()
+                _data['points'].tensor = torch.cat((_points, _new_cloud), 0)
+                assert _data['points'].tensor.shape[0] == self.num_pts_sample
                 _data['num_points_in_gt'] = self.num_pts_sample
         except Exception as e:
             print(f"Error: {e}")
@@ -74,23 +78,24 @@ class Open3DBallPivoting(BaseTransform):
     def transform(self, data):
         
         _data = copy.deepcopy(data)
-    
         _points = data['points'].tensor.numpy()
-
+        
         try:
             if _points.shape[0] >= self.min_points and _points.shape[0] < self.num_pts_sample:
+                num_pts_to_generate = self.num_pts_sample - _points.shape[0]
                 pcd = o3d.geometry.PointCloud()
                 pcd.points = o3d.utility.Vector3dVector(_points)
                 pcd.estimate_normals()
                 distances = pcd.compute_nearest_neighbor_distance()
                 avg_dist = np.mean(distances)
-                radius = 3 * avg_dist
+                radius = 2 * avg_dist
                 bpa_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd, o3d.utility.DoubleVector([radius, radius * 2]))
-                new_points = bpa_mesh.sample_points_poisson_disk(self.num_pts_sample).points
+                new_points = bpa_mesh.sample_points_poisson_disk(num_pts_to_generate).points
                 # turn points to float32
                 new_points_numpy = np.asarray(new_points)
-                _data['points'].tensor = torch.from_numpy(new_points_numpy).float()
-                _data['num_points_in_gt'] = self.num_pts_sample
+                _new_cloud = torch.from_numpy(new_points_numpy).float()
+                _points = torch.from_numpy(_points).float()
+                _data['points'].tensor = torch.cat((_points, _new_cloud), 0)
         except Exception as e:
             print(f"Error: {e}")
             print(f"Upsampling inpossible for {data['path']}")
@@ -139,6 +144,7 @@ class Open3DBallPivotingSequence(BaseTransform):
 
             try:
                 if _cloud.shape[0] >= self.min_points and _cloud.shape[0] < self.num_pts_sample:
+                    num_pts_to_generate = self.num_pts_sample - _cloud.shape[0]
                     pcd = o3d.geometry.PointCloud()
                     pcd.points = o3d.utility.Vector3dVector(_cloud)
                     pcd.estimate_normals()
@@ -146,17 +152,21 @@ class Open3DBallPivotingSequence(BaseTransform):
                     avg_dist = np.mean(distances)
                     radius = 3 * avg_dist
                     bpa_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(pcd, o3d.utility.DoubleVector([radius, radius * 2]))
-                    new_points = bpa_mesh.sample_points_poisson_disk(self.num_pts_sample).points
+                    new_points = bpa_mesh.sample_points_poisson_disk(num_pts_to_generate).points
                     # turn points to float32
                     new_points_numpy = np.asarray(new_points)
-                    # _data['points'].tensor = torch.from_numpy(new_points_numpy).float()
-                    # _data['num_points_in_gt'] = self.num_pts_sample
-                    # new_points_list.append(torch.from_numpy(new_points_numpy).float())
-                    # new_boxes_list.append(inputs['bboxes'][i])
-                    _cloud = torch.from_numpy(new_points_numpy).float()
+                    _cloud = torch.from_numpy(_cloud).float()
+                    _new_cloud = torch.from_numpy(new_points_numpy).float()
+                    
+                    # merge the new points with the old points
+                    _cloud = torch.cat((_cloud, _new_cloud), 0)
+                    
+                    # assert that the new cloud has the correct number of points
+                    assert _cloud.shape[0] == self.num_pts_sample
+                    
             except Exception as e:
                 print(f"Error: {e}")
-                print(f"Upsampling inpossible for cloud {i} with {cloud.shape[0]} points")
+                print(f"Upsampling impossible for cloud {i} with {cloud.shape[0]} points")
 
             new_points_list.append(_cloud)
             new_boxes_list.append(inputs['bboxes'][i])

@@ -1,11 +1,6 @@
-# custom_imports = dict(
-#     imports=['mmdet3d.datasets.robosense_m1_plus_dataset',
-#             'mmdet3d.apis.inferencers.lidar_classification_inferencers',
-#              'mmdet3d.models.data_preprocessors.cls_data_preprocessor',
-#              'mmdet3d.models.backbones.pointnetpp_sa_ssg_torch_impl',
-#                 'mmdet3d.models.decode_heads.pointnet2_cls_ssg',
-#                 'mmdet3d.models.segmentors.encoder_classifer'],
-#     allow_failed_imports=False)
+_base_ = [
+    'pointnet_model_large.py',
+]
 
 custom_imports = dict(imports=['mmdet3d.datasets.robosense_m1_plus_dataset', 
                                'mmdet3d.engine.hooks.wandb_logger_hook',
@@ -52,6 +47,7 @@ robosense_m1_plus_dataset = dict(type='ROBOSENSE_M1_PLUS')
 
 robosense_val_dataset = dict(
     type=robosense_dataset_type,
+    # indices=10,
     data_root=robosense_dataroot,
     data_prefix=dict(pts='points'),
     ann_file='kitti_infos_val.pkl',
@@ -82,42 +78,17 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pp_run12_robosense_m1_plus_sequences/evaluation',
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling/evaluation',
     save_graphics = False,
-    save_evaluation_results = False,
+    save_evaluation_results = True,
     save_random_viz = False,
-    random_viz_keys = 5)
+    random_viz_keys = None)
 
 test_evaluator = val_evaluator
 
 ############# Model Config #############
 
-model = dict(
-    type='EncoderCls3D',
-    data_preprocessor=dict(
-        type='Cls3DDataPreprocessorEvaluation',
-        normalize_mean='True',
-        normalize_size='False',
-        downsample='True',
-        num_pts_downsample=256),    
-    backbone=dict(
-        type='PointNetPPSASSG',
-        in_channels=3,  # [xyz] should be modified with dataset
-        num_points=(256, 128, 1),
-        radius=(0.1, 0.2, 0.6),
-        num_samples=(32, 64, 64),
-        sa_channels=((64, 64, 128), (128, 128, 256), (256, 512, 1024)),
-        fp_channels=(),
-        ),
-    cls_head=dict(
-        type='PointNet2ClsHead',
-        num_classes=4,  # should be modified with dataset
-        lin_layers=((1024, 512), (512, 256)),
-        dropout_ratio=0.4),
-    # model training and testing settings
-    num_pts_sample=256,
-    train_cfg=dict(),
-    test_cfg=dict(mode='whole'))
+# as defined in pointnet_model_large.py
 
 ### runtime settings ###
 val_cfg = dict()
@@ -148,4 +119,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = 'test_cls'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling/evaluation'
