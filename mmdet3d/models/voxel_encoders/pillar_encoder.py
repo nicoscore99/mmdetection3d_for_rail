@@ -8,10 +8,11 @@ from torch import Tensor, nn
 
 from mmdet3d.registry import MODELS
 from .utils import PFNLayer, get_paddings_indicator
-
+from mmdet3d.utils import ConfigType, OptMultiConfig
+from mmengine.model import BaseModule
 
 @MODELS.register_module()
-class PillarFeatureNet(nn.Module):
+class PillarFeatureNet(BaseModule):
     """Pillar Feature Net.
 
     The network prepares the pillar features and performs forward pass
@@ -49,9 +50,11 @@ class PillarFeatureNet(nn.Module):
                                                               40, 1),
                  norm_cfg: Optional[dict] = dict(
                      type='BN1d', eps=1e-3, momentum=0.01),
+                 init_cfg: OptMultiConfig = None,
+                 freeze_cfg: OptMultiConfig = None,
                  mode: Optional[str] = 'max',
                  legacy: Optional[bool] = True):
-        super(PillarFeatureNet, self).__init__()
+        super(PillarFeatureNet, self).__init__(init_cfg=init_cfg, freeze_cfg=freeze_cfg)
         assert len(feat_channels) > 0
         self.legacy = legacy
         if with_cluster_center:

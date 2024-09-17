@@ -116,13 +116,13 @@ class Base3DInferencer(BaseInferencer):
             if 'PALETTE' in checkpoint.get('meta', {}):  # 3D Segmentor
                 model.dataset_meta['palette'] = checkpoint['meta']['PALETTE']
 
-        test_dataset_cfg = deepcopy(cfg.test_dataloader.dataset)
-        # lazy init. We only need the metainfo.
-        test_dataset_cfg['lazy_init'] = True
-        metainfo = DATASETS.build(test_dataset_cfg).metainfo
-        cfg_palette = metainfo.get('palette', None)
-        if cfg_palette is not None:
-            model.dataset_meta['palette'] = cfg_palette
+        # test_dataset_cfg = deepcopy(cfg.test_dataloader.dataset)
+        # # lazy init. We only need the metainfo.
+        # test_dataset_cfg['lazy_init'] = True
+        # metainfo = DATASETS.build(test_dataset_cfg).metainfo
+        # cfg_palette = metainfo.get('palette', None)
+        # if cfg_palette is not None:
+        #     model.dataset_meta['palette'] = cfg_palette
 
         model.cfg = cfg  # save the config in the model for convenience
         model.to(device)

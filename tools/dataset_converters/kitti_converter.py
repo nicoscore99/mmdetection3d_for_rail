@@ -9,7 +9,7 @@ from nuscenes.utils.geometry_utils import view_points
 
 from mmdet3d.structures import points_cam2img
 from mmdet3d.structures.ops import box_np_ops
-from .kitti_data_utils import WaymoInfoGatherer, get_kitti_image_info
+from .kitti_data_utils import WaymoInfoGatherer, get_kitti_image_info, get_osdar_image_info
 from .nuscenes_converter import post_process_coords
 
 kitti_categories = ('Pedestrian', 'Cyclist', 'Car')
@@ -39,11 +39,18 @@ def convert_to_kitti_info_version2(info):
             'velodyne_path': info['velodyne_path'],
         }
 
-
 def _read_imageset_file(path):
+
     with open(path, 'r') as f:
         lines = f.readlines()
     return [int(line) for line in lines]
+
+def _read_imageset_file_osdar(path):
+    temp_lst = []
+    with open(path, 'r') as f:
+        for line in f:
+            temp_lst.append(line.strip())
+    return temp_lst
 
 
 class _NumPointsInGTCalculater:
@@ -146,6 +153,7 @@ def _calculate_num_points_in_gt(data_path,
         rots = annos['rotation_y'][:num_obj]
         gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]],
                                          axis=1)
+        
         gt_boxes_lidar = box_np_ops.box_camera_to_lidar(
             gt_boxes_camera, rect, Trv2c)
         indices = box_np_ops.points_in_rbbox(points_v[:, :3], gt_boxes_lidar)
@@ -155,6 +163,63 @@ def _calculate_num_points_in_gt(data_path,
             [num_points_in_gt, -np.ones([num_ignored])])
         annos['num_points_in_gt'] = num_points_in_gt.astype(np.int32)
 
+def _calculate_num_points_in_gt_osdar_version(data_path,
+                                                infos,
+                                                relative_path,
+                                                remove_outside=True,
+                                                num_features=4):
+
+    for info in mmengine.track_iter_progress(infos):
+        # print(info['annos'])
+        pc_info = info['point_cloud']
+        
+        if relative_path:
+            v_path = str(Path(data_path) / pc_info['velodyne_path'])
+        else:
+            v_path = pc_info['velodyne_path']
+        points_v = np.fromfile(v_path, dtype=np.float32, count=-1).reshape([-1, num_features])
+        annos = info['annos']
+        num_obj = len([n for n in annos['name'] if n != 'DontCare'])
+
+        names = annos['name']
+        dims = annos['dimensions']
+        locs = annos['location']
+        rots = annos['rotation_y']
+
+        gt_points = -np.ones(len(names))
+        for i, values in enumerate(zip(names, dims, locs, rots)):
+            _name, _dim, _loc, _rot = values
+            if _name == 'DontCare':
+                continue
+            else:
+                gt_boxes_lidar = np.concatenate([_loc, _dim, [_rot]], axis=0).reshape((1, 7))
+                indices = box_np_ops.points_in_rbbox(points_v[:, :3], gt_boxes_lidar)
+                num_pts_in_gt = indices.sum(0)
+                gt_points[i] = num_pts_in_gt
+        
+        info['annos']['num_points_in_gt'] = gt_points.astype(np.int32)
+
+def filter_osdar_gt_points(points_v, annos):
+
+    gt_points = []
+
+    # for i in range(len(annos['name'])):
+    #     if annos['name'][i] == 'DontCare':
+    #         continue
+    #     else:
+    #         loc = annos['location'][i]
+    #         dims = annos['dimensions'][i]
+    #         rots = annos['rotation_y'][i]
+    #         gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1)
+    #         gt_boxes_lidar = box_np_ops.box_camera_to_lidar(gt_boxes_camera, rect, Trv2c)
+    #         indices = box_np_ops.points_in_rbbox(points_v[:, :3], gt_boxes_lidar)
+    #         num_points_in_gt = indices.sum(0)
+    #         gt_points.append(num_points_in_gt)
+            
+    # return gt_points
+
+    raise NotImplementedError
+            
 
 def create_kitti_info_file(data_path,
                            pkl_prefix='kitti',
@@ -227,6 +292,78 @@ def create_kitti_info_file(data_path,
     print(f'Kitti info test file is saved to {filename}')
     mmengine.dump(kitti_infos_test, filename)
 
+def create_osdar_info_file(data_path,
+                           pkl_prefix='osdar',
+                           with_plane=False,
+                           save_path=None,
+                           relative_path=True):
+    """Create info file of OSDAR dataset. Adapted from create_kitti_info_file.
+
+    Given the raw data, generate its related info file in pkl format.
+
+    Args:
+        data_path (str): Path of the data root.
+        pkl_prefix (str, optional): Prefix of the info file to be generated.
+            Default: 'osdar'.
+        with_plane (bool, optional): Whether to use plane information.
+            Default: False.
+        save_path (str, optional): Path to save the info file.
+            Default: None.
+        relative_path (bool, optional): Whether to use relative path.
+            Default: True.
+    """
+    imageset_folder = Path(data_path) / 'ImageSets'
+    train_img_ids = _read_imageset_file_osdar(str(imageset_folder / 'train.txt'))
+    val_img_ids = _read_imageset_file_osdar(str(imageset_folder / 'val.txt'))
+    test_img_ids = _read_imageset_file_osdar(str(imageset_folder / 'test.txt'))
+
+    print('Generate info. this may take several minutes.')
+    if save_path is None:
+        save_path = Path(data_path)
+    else:
+        save_path = Path(save_path)
+    osdar_infos_train = get_osdar_image_info(
+        data_path,
+        training=True,
+        velodyne=True,
+        calib=False,
+        with_plane=with_plane,
+        image_ids=train_img_ids,
+        relative_path=relative_path)
+    # _calculate_num_points_in_gt(data_path, osdar_infos_train, relative_path)
+    _calculate_num_points_in_gt_osdar_version(data_path, osdar_infos_train, relative_path)
+    filename = save_path / f'{pkl_prefix}_infos_train.pkl'
+    print(f'Osdar info train file is saved to {filename}')
+    mmengine.dump(osdar_infos_train, filename)
+    osdar_infos_val = get_osdar_image_info(
+        data_path,
+        training=True,
+        velodyne=True,
+        calib=False,
+        with_plane=with_plane,
+        image_ids=val_img_ids,
+        relative_path=relative_path)
+    # _calculate_num_points_in_gt(data_path, osdar_infos_val, relative_path)
+    _calculate_num_points_in_gt_osdar_version(data_path, osdar_infos_val, relative_path)
+    filename = save_path / f'{pkl_prefix}_infos_val.pkl'
+    print(f'Osdar info val file is saved to {filename}')
+    mmengine.dump(osdar_infos_val, filename)
+    filename = save_path / f'{pkl_prefix}_infos_trainval.pkl'
+    print(f'Osdar info trainval file is saved to {filename}')
+    mmengine.dump(osdar_infos_train + osdar_infos_val, filename)
+
+    osdar_infos_test = get_osdar_image_info(
+        data_path,
+        training=False,
+        label_info=False,
+        velodyne=True,
+        calib=False,
+        with_plane=False,
+        image_ids=test_img_ids,
+        relative_path=relative_path)
+    filename = save_path / f'{pkl_prefix}_infos_test.pkl'
+    print(f'Osdar info test file is saved to {filename}')
+    mmengine.dump(osdar_infos_test, filename)
 
 def create_waymo_info_file(data_path,
                            pkl_prefix='waymo',

@@ -6,6 +6,45 @@ from mmengine.structures import InstanceData
 
 from mmdet3d.registry import TASK_UTILS
 
+import numpy as np
+import torch
+from collections import defaultdict
+
+
+def remove_duplicates(labels, overlap, neg_case = 0):
+    """Remove duplicate labels by keeping the one with the highest overlap score.
+
+    Args:
+        labels (list): List of labels.
+        overlap (list): List of overlap scores.
+        neg_case (int): The negative case label. Defaults to 0.
+
+    Returns:
+        list: List of labels with duplicates removed.
+    """
+
+    # Dictionary to keep track of the highest overlap score for each label
+    label_to_max_overlap = defaultdict(float)
+    # Dictionary to keep track of the index of the highest overlap score for each label
+    label_to_index = {}
+
+    # First pass to find the maximum overlap for each label
+    for i, label in enumerate(labels):
+        if label != neg_case:
+            if overlap[i] > label_to_max_overlap[label]:
+                label_to_max_overlap[label] = overlap[i]
+                label_to_index[label] = i
+
+    # Second pass to update labels
+    for i, label in enumerate(labels):
+        if label != neg_case:
+            if i != label_to_index[label]:
+                labels[i] = neg_case
+
+    # Assert that the lenght of the labels is the same as the length of the overlap
+    assert len(labels) == len(overlap)
+
+    return labels
 
 @TASK_UTILS.register_module()
 class Max3DIoUAssigner(MaxIoUAssigner):
@@ -64,16 +103,67 @@ class Max3DIoUAssigner(MaxIoUAssigner):
         self.match_low_quality = match_low_quality
         self.iou_calculator = TASK_UTILS.build(iou_calculator)
 
+    def force_single_assignement(self, _assign_result: AssignResult) -> AssignResult:
+        """Force single assignment for each instance ground truth instance.
+
+        Args:
+            AssignResult: The assign result.
+
+        Returns:
+            AssignResult: The assign result with single detection to ground truth assignement only.
+
+        """
+
+        if isinstance(_assign_result.gt_inds, torch.Tensor):
+            _gt_inds = np.array(_assign_result.gt_inds)
+        elif isinstance(_assign_result.gt_inds, np.ndarray):
+            _gt_inds = _assign_result.gt_inds
+        else:
+            raise ValueError("gt_inds is not a numpy array or torch tensor")
+
+        if isinstance(_assign_result.max_overlaps, torch.Tensor):
+            _max_overlaps = np.array(_assign_result.max_overlaps)
+        elif isinstance(_assign_result.max_overlaps, np.ndarray):
+            _max_overlaps = _assign_result.max_overlaps
+        else:
+            raise ValueError("max_overlaps is not a numpy array or torch tensor")
+        
+        if isinstance(_assign_result.labels, torch.Tensor):
+            _labels = np.array(_assign_result.labels)
+        elif isinstance(_assign_result.labels, np.ndarray):
+            _labels = _assign_result.labels
+        else:
+            raise ValueError("labels is not a numpy array or torch tensor")
+        
+        _gt_inds = remove_duplicates(labels=_gt_inds, overlap=_max_overlaps, neg_case=0)
+        _labels = remove_duplicates(labels=_labels, overlap=_max_overlaps, neg_case=-1)
+
+        # Assert that everywhere where _gt_inds is 0, _labels is -1
+        if not np.all(_labels[_gt_inds == 0] == -1):
+            print("Debug: _gt_inds", _gt_inds)
+            print("Debug: _labels", _labels)
+            raise ValueError("gt_inds and labels are not consistent")
+        
+        # Assert that everywhere where _gt_inds is not 0, _labels is not -1
+        if not np.all(_labels[_gt_inds != 0] != -1):
+            print("Debug: _gt_inds", _gt_inds)
+            print("Debug: _labels", _labels)
+            raise ValueError("gt_inds and labels are not consistent")
+        
+        new_assign_result = AssignResult(num_gts=_assign_result.num_gts, gt_inds=torch.Tensor(_gt_inds), max_overlaps=_assign_result.max_overlaps, labels=torch.Tensor(_labels))
+        return new_assign_result
+
     def assign(self,
                pred_instances: InstanceData,
                gt_instances: InstanceData,
                gt_instances_ignore: Optional[InstanceData] = None,
+               force_single_assignement: bool = False,
                **kwargs) -> AssignResult:
         """Assign gt to bboxes.
 
         This method assign a gt bbox to every bbox (proposal/anchor), each bbox
         will be assigned with -1, or a semi-positive number. -1 means negative
-        sample, semi-positive number is the index (0-based) of assigned gt.
+        sample, semi-positiv e number is the index (1-based) of assigned gt. 
         The assignment is done in following steps, the order matters.
 
         1. assign every bbox to the background
@@ -119,7 +209,10 @@ class Max3DIoUAssigner(MaxIoUAssigner):
         if 'priors' in pred_instances:
             priors = pred_instances.priors
         else:
-            priors = pred_instances.bboxes_3d.tensor
+            try:
+                priors = pred_instances.bboxes_3d.tensor
+            except Exception:
+                priors = pred_instances.bboxes_3d
         gt_labels = gt_instances.labels_3d
         if gt_instances_ignore is not None:
             gt_bboxes_ignore = gt_instances_ignore.bboxes_3d
@@ -157,4 +250,8 @@ class Max3DIoUAssigner(MaxIoUAssigner):
             assign_result.max_overlaps = assign_result.max_overlaps.to(device)
             if assign_result.labels is not None:
                 assign_result.labels = assign_result.labels.to(device)
+
+        if force_single_assignement:
+            assign_result = self.force_single_assignement(assign_result)
+
         return assign_result

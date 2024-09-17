@@ -1,0 +1,392 @@
+backend_args = None
+class_names = ['Pedestrian', 'Cyclist', 'Car']
+custom_imports = dict(
+    allow_failed_imports=False,
+    imports=[
+        'mmdet3d.datasets.osdar23_dataset',
+        'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab',
+    ])
+data_root = 'data/osdar23_3classes/'
+dataset = dict(type='OSDaR23Dataset')
+dataset_type = 'OSDaR23Dataset'
+
+default_hooks = dict(
+    checkpoint=dict(by_epoch=True, interval=4, type='CheckpointHook'),
+    logger=dict(interval=50, type='LoggerHook'),
+    param_scheduler=dict(type='ParamSchedulerHook'),
+    sampler_seed=dict(type='DistSamplerSeedHook'),
+    timer=dict(type='IterTimerHook'),
+    visualization=dict(type='Det3DVisualizationHook'))
+default_scope = 'mmdet3d'
+env_cfg = dict(
+    cudnn_benchmark=False,
+    dist_cfg=dict(backend='nccl'),
+    mp_cfg=dict(mp_start_method='fork', opencv_num_threads=0))
+# epoch_num = 5
+eval_pipeline = [
+    dict(
+        backend_args=None,
+        coord_type='LIDAR',
+        load_dim=4,
+        type='LoadPointsFromFile',
+        use_dim=4),
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(
+        keys=[
+            'points',
+            'gt_bboxes_3d',
+            'gt_labels_3d',
+        ],
+        type='Pack3DDetInputs'),
+]
+input_modality = dict(use_camera=False, use_lidar=True)
+launcher = 'none'
+
+metainfo = dict(classes=['Pedestrian', 'Cyclist', 'Car'])
+model = dict(
+    backbone=dict(
+        in_channels=64,
+        layer_nums=[
+            3,
+            5,
+            5,
+        ],
+        layer_strides=[
+            2,
+            2,
+            2,
+        ],
+        out_channels=[
+            64,
+            128,
+            256,
+        ],
+        type='SECOND'),
+    bbox_head=dict(
+        anchor_generator=dict(
+            ranges=[
+                [
+                    0,
+                    -39.68,
+                    -3,
+                    69.12,
+                    39.68,
+                    1,
+                ],
+                [
+                    0,
+                    -39.68,
+                    -3,
+                    69.12,
+                    39.68,
+                    1,
+                ],
+                [
+                    0,
+                    -39.68,
+                    -3,
+                    69.12,
+                    39.68,
+                    1,
+                ],
+            ],
+            reshape_out=False,
+            rotations=[
+                0,
+                1.57,
+            ],
+            sizes=[
+                [
+                    0.89,
+                    0.86,
+                    1.89,
+                ],
+                [
+                    1.72,
+                    0.89,
+                    1.27,
+                ],
+                [
+                    4.3,
+                    3.07,
+                    2.79,
+                ],
+            ],
+            type='AlignedAnchor3DRangeGenerator'),
+        assign_per_class=True,
+        bbox_coder=dict(type='DeltaXYZWLHRBBoxCoder'),
+        diff_rad_by_sin=True,
+        feat_channels=384,
+        in_channels=384,
+        loss_bbox=dict(
+            beta=0.1111111111111111,
+            loss_weight=2.0,
+            type='mmdet.SmoothL1Loss'),
+        loss_cls=dict(
+            alpha=0.25,
+            gamma=2.0,
+            loss_weight=1.0,
+            type='mmdet.FocalLoss',
+            use_sigmoid=True),
+        loss_dir=dict(
+            loss_weight=0.2, type='mmdet.CrossEntropyLoss', use_sigmoid=False),
+        num_classes=3,
+        type='Anchor3DHead',
+        use_direction_classifier=True),
+    data_preprocessor=dict(
+        type='Det3DDataPreprocessor',
+        voxel=True,
+        voxel_layer=dict(
+            max_num_points=32,
+            max_voxels=(
+                16000,
+                16000,
+            ),
+            point_cloud_range=[
+                0,
+                -39.68,
+                -3,
+                69.12,
+                39.68,
+                10,
+            ],
+            voxel_size=[
+                0.16,
+                0.16,
+                4,
+            ])),
+    middle_encoder=dict(
+        in_channels=64, output_shape=[
+            496,
+            432,
+        ], type='PointPillarsScatter'),
+    neck=dict(
+        in_channels=[
+            64,
+            128,
+            256,
+        ],
+        out_channels=[
+            128,
+            128,
+            128,
+        ],
+        type='SECONDFPN',
+        upsample_strides=[
+            1,
+            2,
+            4,
+        ]),
+    test_cfg=dict(
+        max_num=50,
+        min_bbox_size=0,
+        nms_across_levels=False,
+        nms_pre=100,
+        nms_thr=0.01,
+        score_thr=0.1,
+        use_rotate_nms=True),
+    train_cfg=dict(
+        allowed_border=0,
+        assigner=[
+            dict(
+                ignore_iof_thr=-1,
+                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+                min_pos_iou=0.35,
+                neg_iou_thr=0.35,
+                pos_iou_thr=0.5,
+                type='Max3DIoUAssigner'),
+            dict(
+                ignore_iof_thr=-1,
+                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+                min_pos_iou=0.35,
+                neg_iou_thr=0.35,
+                pos_iou_thr=0.5,
+                type='Max3DIoUAssigner'),
+            dict(
+                ignore_iof_thr=-1,
+                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
+                min_pos_iou=0.35,
+                neg_iou_thr=0.35,
+                pos_iou_thr=0.5,
+                type='Max3DIoUAssigner'),
+        ],
+        debug=False,
+        pos_weight=-1),
+    type='VoxelNet',
+    voxel_encoder=dict(
+        feat_channels=[
+            64,
+        ],
+        in_channels=4,
+        point_cloud_range=[
+            0,
+            -39.68,
+            -3,
+            69.12,
+            39.68,
+            10,
+        ],
+        type='PillarFeatureNet',
+        voxel_size=[
+            0.16,
+            0.16,
+            4,
+        ],
+        with_distance=False))
+
+test_cfg = dict()
+test_dataloader = dict(
+    batch_size=6,
+    dataset=dict(
+        ann_file='kitti_infos_val.pkl',
+        backend_args=None,
+        box_type_3d='LiDAR',
+        data_prefix=dict(pts='points'),
+        data_root='data/osdar23_3class/',
+        metainfo=dict(classes=['Pedestrian', 'Cyclist', 'Car']),
+        modality=dict(use_camera=False, use_lidar=True),
+        pipeline=[
+            dict(
+                backend_args=None,
+                coord_type='LIDAR',
+                load_dim=4,
+                type='LoadPointsFromFile',
+                use_dim=4),
+            dict(
+                type='LoadAnnotations3D',
+                with_bbox_3d=True,
+                with_label_3d=True),
+            dict(
+                flip=False,
+                img_scale=(
+                    1333,
+                    800,
+                ),
+                pts_scale_ratio=1,
+                transforms=[
+                    dict(
+                        rot_range=[
+                            0,
+                            0,
+                        ],
+                        scale_ratio_range=[
+                            1.0,
+                            1.0,
+                        ],
+                        translation_std=[
+                            0,
+                            0,
+                            0,
+                        ],
+                        type='GlobalRotScaleTrans'),
+                    dict(type='RandomFlip3D'),
+                    dict(
+                        point_cloud_range=[
+                            0,
+                            -39.68,
+                            -3,
+                            69.12,
+                            39.68,
+                            10,
+                        ],
+                        type='PointsRangeFilter'),
+                ],
+                type='MultiScaleFlipAug3D'),
+            dict(
+                keys=[
+                    'points',
+                    'gt_labels_3d',
+                    'gt_bboxes_3d',
+                ],
+                type='Pack3DDetInputs'),
+        ],
+        test_mode=True,
+        type='OSDaR23Dataset'),
+    drop_last=False,
+    num_workers=4,
+    persistent_workers=True,
+    sampler=dict(shuffle=False, type='DefaultSampler'))
+test_evaluator = dict(
+    ann_file='data/osdar23_3class/kitti_infos_val.pkl',
+    backend_args=None,
+    classes=['Pedestrian', 'Cyclist', 'Car'],
+    metric='det3d',
+    output_dir=
+    'data/osdar23_3class/test/',
+    pcd_limit_range=[
+        0,
+        -39.68,
+        -10,
+        69.12,
+        39.68,
+        10,
+    ],
+    save_graphics=False,
+    type='General_3dDet_Metric_MMLab')
+test_pipeline = [
+    dict(
+        backend_args=None,
+        coord_type='LIDAR',
+        load_dim=4,
+        type='LoadPointsFromFile',
+        use_dim=4),
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(
+        flip=False,
+        img_scale=(
+            1333,
+            800,
+        ),
+        pts_scale_ratio=1,
+        transforms=[
+            dict(
+                rot_range=[
+                    0,
+                    0,
+                ],
+                scale_ratio_range=[
+                    1.0,
+                    1.0,
+                ],
+                translation_std=[
+                    0,
+                    0,
+                    0,
+                ],
+                type='GlobalRotScaleTrans'),
+            dict(type='RandomFlip3D'),
+            dict(
+                point_cloud_range=[
+                    0,
+                    -39.68,
+                    -3,
+                    69.12,
+                    39.68,
+                    10,
+                ],
+                type='PointsRangeFilter'),
+        ],
+        type='MultiScaleFlipAug3D'),
+    dict(
+        keys=[
+            'points',
+            'gt_labels_3d',
+            'gt_bboxes_3d',
+        ],
+        type='Pack3DDetInputs'),
+]
+
+vis_backends = [
+    dict(type='LocalVisBackend'),
+]
+visualizer = dict(
+    name='visualizer',
+    type='Det3DLocalVisualizer',
+    vis_backends=[
+        dict(type='LocalVisBackend'),
+    ])
+voxel_size = [
+    0.16,
+    0.16,
+    4,
+]

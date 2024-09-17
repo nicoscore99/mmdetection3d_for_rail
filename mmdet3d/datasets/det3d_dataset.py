@@ -110,8 +110,12 @@ class Det3DDataset(BaseDataset):
             }
             self.label_mapping[-1] = -1
             for label_idx, name in enumerate(metainfo['classes']):
-                ori_label = self.METAINFO['classes'].index(name)
-                self.label_mapping[ori_label] = label_idx
+                try:
+                    ori_label = self.METAINFO['classes'].index(name)
+                    self.label_mapping[ori_label] = label_idx
+                except Exception:
+                    raise ValueError(
+                        f'class {name} is not in {self.METAINFO["classes"]}')
 
             self.num_ins_per_cat = [0] * len(metainfo['classes'])
         else:

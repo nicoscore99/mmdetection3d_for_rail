@@ -390,7 +390,7 @@ class ObjectSample(BaseTransform):
         """Transform function to sample ground truth objects to the data.
 
         Args:
-            input_dict (dict): Result dict from loading pipeline.
+            input_dict (dict): Result dict from loading pipeline. Contains the information for a single frame.
 
         Returns:
             dict: Results after object sampling augmentation,
@@ -870,9 +870,10 @@ class ObjectRangeFilter(BaseTransform):
             dict: Results after filtering, 'gt_bboxes_3d', 'gt_labels_3d'
             keys are updated in the result dict.
         """
+        
         # Check points instance type and initialise bev_range
         if isinstance(input_dict['gt_bboxes_3d'],
-                      (LiDARInstance3DBoxes, DepthInstance3DBoxes)):
+                    (LiDARInstance3DBoxes, DepthInstance3DBoxes)):
             bev_range = self.pcd_range[[0, 1, 3, 4]]
         elif isinstance(input_dict['gt_bboxes_3d'], CameraInstance3DBoxes):
             bev_range = self.pcd_range[[0, 2, 3, 5]]

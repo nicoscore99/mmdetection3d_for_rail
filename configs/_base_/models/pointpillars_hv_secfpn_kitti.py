@@ -1,5 +1,7 @@
 voxel_size = [0.16, 0.16, 4]
 
+# default_scope = 'mmdet3d'
+
 model = dict(
     type='VoxelNet',
     data_preprocessor=dict(

@@ -1,0 +1,150 @@
+@startuml mmdet_osdar_overview
+
+object data {
+    kitti
+    osdar23
+}
+
+object pkl_data {
+    kitti
+    osdar23
+}
+
+package "mmengine" {
+
+    class "BaseDataset" {
+        + get_data_info()
+        + full_init()
+        + metainfo()
+        + parse_data_info()
+        + filter_data()
+        + get_cat_ids()
+        + __getitem__()
+        + load_data_list()
+        + _load_metainfo()
+        + _join_prefix()
+        + get_subset_()
+        + get_subset()
+        + _get_serialized_subset()
+        + _get_unserialized_subset()
+        + _rand_another()
+        + prepare_data()
+        + __len__()
+        + _copy_without_annotation()
+    }
+
+    abstract DATASETS {
+
+    }
+
+    class Registry {
+        _module_dict{}
+        + build()
+        + register_module()
+    }
+
+
+}
+
+package "mmdet3d" {
+    
+    package "datasets" {
+
+        class OSDaR23Dataset {
+            + parse_data_info()
+            + parse_ann_info()
+        }
+
+        class Det3DDataset {
+            + _remove_dontcare()
+            + get_ann_info()
+            + parse_ann_info()
+            + parse_data_info()
+            + _show_ins_var()
+            + prepare_data()
+            + get_cat_ids()
+        }
+
+    }
+
+    package "tools" {
+        package "converters" {
+            class OSDaR2_KITTI_Castor {
+                + convert()
+                + convert_scene()
+                + create_labels()
+                + copy_lidar_files()
+                + generate_datasplit()
+            }
+
+            object kitti_converter {
+                + convert_to_kitti_info_version2()
+                + _calculate_num_points_in_gt()
+                + _calculate_num_points_in_gt_osdar_version()
+                + filter_osdar_gt_points()
+                + create_kitti_info_file()
+                + create_osdar_info_file()
+                + _create_reduced_point_cloud()
+                + create_reduced_point_cloud()
+            }
+
+            object update_infos_to_v2 {
+                + main()
+                + update_pkl_infos()
+                + update_kitti_infos()
+                + update_osdar23_infos()
+            }
+
+            object create_groundtruth_database {
+                + create_groundtruth_database()
+            }
+        }
+
+        object create_data {
+            + main()
+            + kitti_data_prep()
+            + osdar_data_prep()
+        }
+    }
+
+}
+
+package "configs" {
+    package "__base__" {
+        package "models" {}
+        package "datasets" {
+            abstract osdar23_3d_class {
+
+            }
+            abstract kitti_3d_class{
+
+            }
+        }
+        package "schedules" {}
+    }
+}
+
+OSDaR23Dataset <|-- Det3DDataset : specific dataset
+DATASETS <-- OSDaR23Dataset : is registered as
+
+Det3DDataset <|-- BaseDataset : specific dataset
+
+create_data --> kitti_converter : calls
+create_data --> update_infos_to_v2  : calls
+create_data --> create_groundtruth_database : calls
+create_data <-- configs.__base__.datasets : provides dataset information
+
+DATASETS <-- Registry
+
+create_groundtruth_database --> OSDaR23Dataset : calls build on
+
+configs.__base__.datasets -- data : defines location and organization
+data <-- mmdet3d.tools.converters.OSDaR2_KITTI_Castor : generates OSDaR23Dataset in identical format as KITTI
+data --> pkl_data : is generated from
+
+kitti_converter --> pkl_data : generates
+update_infos_to_v2 --> pkl_data : updates
+
+mmdet3d.tools.converters.create_groundtruth_database <-- pkl_data : basis for groundtruth database
+
+@enduml

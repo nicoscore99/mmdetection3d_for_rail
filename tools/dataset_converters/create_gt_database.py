@@ -143,7 +143,6 @@ def create_groundtruth_database(dataset_class_name,
         with_mask (bool, optional): Whether to use mask.
             Default: False.
     """
-    print(f'Create GT Database of {dataset_class_name}')
     dataset_cfg = dict(
         type=dataset_class_name, data_root=data_path, ann_file=info_path)
     if dataset_class_name == 'KittiDataset':
@@ -168,6 +167,52 @@ def create_groundtruth_database(dataset_class_name,
                     with_label_3d=True,
                     backend_args=backend_args)
             ])
+        
+    elif dataset_class_name == 'OSDaR23Dataset':
+        backend_args = None
+        dataset_cfg.update(
+            modality=dict(
+                use_lidar=True,
+                use_camera=with_mask,
+            ),
+            data_prefix=dict(
+                pts='points'),
+            pipeline=[
+                dict(
+                    type='LoadPointsFromFile',
+                    coord_type='LIDAR',
+                    load_dim=4,
+                    use_dim=4,
+                    backend_args=backend_args),
+                dict(
+                    type='LoadAnnotations3D',
+                    with_bbox_3d=True,
+                    with_label_3d=True,
+                    backend_args=backend_args)
+            ])
+        
+    elif dataset_class_name == 'ROBOSENSE_M1_PLUS':
+        backend_args = None
+        dataset_cfg.update(
+            modality=dict(
+                use_lidar=True,
+                use_camera=with_mask,
+            ),
+            data_prefix=dict(
+                pts='points'),
+            pipeline=[
+                dict(
+                    type='LoadPointsFromFile',
+                    coord_type='LIDAR',
+                    load_dim=4,
+                    use_dim=4,
+                    backend_args=backend_args),
+                dict(
+                    type='LoadAnnotations3D',
+                    with_bbox_3d=True,
+                    with_label_3d=True,
+                    backend_args=backend_args)
+            ])        
 
     elif dataset_class_name == 'NuScenesDataset':
         dataset_cfg.update(
@@ -217,7 +262,7 @@ def create_groundtruth_database(dataset_class_name,
                     with_label_3d=True,
                     backend_args=backend_args)
             ])
-
+    
     dataset = DATASETS.build(dataset_cfg)
 
     if database_save_path is None:
@@ -242,7 +287,12 @@ def create_groundtruth_database(dataset_class_name,
         annos = example['ann_info']
         image_idx = example['sample_idx']
         points = example['points'].numpy()
-        gt_boxes_3d = annos['gt_bboxes_3d'].numpy()
+
+        if type(annos['gt_bboxes_3d']) != np.ndarray:
+            gt_boxes_3d = annos['gt_bboxes_3d'].numpy()
+        else:
+            gt_boxes_3d = annos['gt_bboxes_3d']
+
         names = [dataset.metainfo['classes'][i] for i in annos['gt_labels_3d']]
         group_dict = dict()
         if 'group_ids' in annos:
@@ -407,7 +457,10 @@ class GTDatabaseCreater:
         annos = example['ann_info']
         image_idx = example['sample_idx']
         points = example['points'].numpy()
-        gt_boxes_3d = annos['gt_bboxes_3d'].numpy()
+        if type(annos['gt_bboxes_3d']) != np.ndarray:
+            gt_boxes_3d = annos['gt_bboxes_3d'].numpy()
+        else:
+            gt_boxes_3d = annos['gt_bboxes_3d']
         names = [
             self.dataset.metainfo['classes'][i] for i in annos['gt_labels_3d']
         ]
