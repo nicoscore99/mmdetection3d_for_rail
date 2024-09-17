@@ -201,17 +201,23 @@ class General_3dDet_Metric_MMLab(BaseMetric):
 
         ######## Evaluation ########
         
-        evaluation_results_dict['ap'] = self.evaluator.options_frame_metrics(method='ap', 
-                                                                             iou_level=self.difficulty_levels,
-                                                                             class_accuracy_requirements=['easy'])
+        ad_dict = self.evaluator.options_frame_metrics(method='ap', 
+                                                        iou_level=self.difficulty_levels,
+                                                        class_accuracy_requirements=['easy', 'hard'])
         
-        evaluation_results_dict['precision'] = self.evaluator.options_frame_metrics(method='precision',
-                                                                                    iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements=['easy'])
+        evaluation_results_dict.update(ad_dict)
+        
+        prec_dict = self.evaluator.options_frame_metrics(method='precision',
+                                                        iou_level=self.difficulty_levels,
+                                                        class_accuracy_requirements=['easy', 'hard'])
+        
+        evaluation_results_dict.update(prec_dict)
 
-        evaluation_results_dict['recall'] = self.evaluator.options_frame_metrics(method='recall',
-                                                                                    iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements=['easy'])
+        recall_dict = self.evaluator.options_frame_metrics(method='recall',
+                                                            iou_level=self.difficulty_levels,
+                                                            class_accuracy_requirements=['easy', 'hard'])
+        
+        evaluation_results_dict.update(recall_dict)
 
         curves_dict['prec'] = self.evaluator.options_frame_curves(method='precision_recall_curve', iou_level=0.3)
         curves_dict['roc'] = self.evaluator.options_frame_curves(method='roc_curve', iou_level=0.3)
