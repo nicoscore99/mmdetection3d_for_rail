@@ -14,19 +14,19 @@ kitti_dataset = dict(type='KittiDataset')
 default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
 custom_hooks = [
     dict(type='WandbLoggerHook', 
-         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/mixed_dataset_training/rtx4090_pp_run2_mix_kitti_osdar23_3class',
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/mixed_dataset_training/rtx4090_pp_run5_mix_kitti_osdar23_4class',
          yaml_config_path='wandb_auth.yaml',
          log_artifact=True,
          init_kwargs={
              'entity': 'railsensing',
              'project': 'pointpillars',
-             'name': 'rtx4090_pp_run2_mix_kitti_osdar23_3class',
+             'name': 'rtx4090_pp_run5_mix_kitti_osdar23_4class',
              })
 ]
 
 ############# Generic Variables #############
 
-class_names = ['Pedestrian', 'Cyclist', 'Car']
+class_names = ['Pedestrian', 'Cyclist', 'RoadVehicle', 'Train']
 point_cloud_range = [0, -39.68, -3, 69.12, 39.68, 1]
 point_cloud_range_inference = [0, -39.68, -3, 69.12, 39.68, 10]
 input_modality = dict(use_lidar=True, use_camera=False)
@@ -227,7 +227,7 @@ model = dict(
         out_channels=[128, 128, 128]),
     bbox_head=dict(
         type='Anchor3DHead',
-        num_classes=3,
+        num_classes=4,
         in_channels=384,
         feat_channels=384,
         use_direction_classifier=True,
@@ -373,4 +373,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/mixed_dataset_training/rtx4090_pp_run2_mix_kitti_osdar23_3class'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/mixed_dataset_training/rtx4090_pp_run5_mix_kitti_osdar23_4class'
