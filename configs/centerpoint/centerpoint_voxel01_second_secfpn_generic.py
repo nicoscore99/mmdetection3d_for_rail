@@ -13,23 +13,24 @@ osdar23_dataset = dict(type='OSDaR23Dataset')
 
 ############# Additional Hooks #############
 
-# default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'centerpoint',
-#              'name': 'rtx4090_cp_run3_mix_osdar_kitti_3class',
-#              })
-# ]
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'centerpoint',
+             'name': 'rtx4090_cp_run4_kitti_3class',
+             })
+]
 
 ############# Generic variables #############
 
 class_names = ['Pedestrian', 'Cyclist', 'Car']
-point_cloud_range = [5.0, -40, -3.0, 40, 80.2, 3.0]
+# point_cloud_range = [5.0, -40, -3.0, 40, 80.2, 3.0]
+point_cloud_range = [0, -40, -3, 70.4, 40, 3.0]
 point_cloud_range_inference = point_cloud_range
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
@@ -218,7 +219,7 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[repeat_osdar23_train_dataset, kitti_repeat_dataset]
+        datasets=[kitti_repeat_dataset]
     )
 )
 
@@ -240,7 +241,7 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range_inference,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run3_mix_osdar_kitti_3class/evaluation_kitti',
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run4_kitti_3class/evaluations',
     save_graphics = True,
     save_evaluation_results = True,
     save_random_viz = False,
@@ -279,7 +280,7 @@ model = dict(
     pts_middle_encoder=dict(
         type='SparseEncoder',
         in_channels=4,
-        sparse_shape=[41, 800, 752], # TODO: This certainly needs adaptation
+        sparse_shape=[41, 800, 704],
         output_channels=128,
         order=('conv', 'norm', 'act'),
         encoder_channels=((16, 16, 32), (32, 32, 64), (64, 64, 128), (128, 128)),
@@ -332,7 +333,7 @@ model = dict(
     train_cfg=dict(
         pts=dict(
             point_cloud_range=point_cloud_range,
-            grid_size=[752, 800, 40], #41, 800, 752]
+            grid_size=[704, 800, 40], #41, 800, 752]
             voxel_size=voxel_size,
             out_size_factor=8,
             dense_reg=1,
@@ -416,7 +417,7 @@ param_scheduler = [
 ]
 
 # runtime settings
-train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=1)
+train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=5)
 val_cfg = dict()
 test_cfg = dict()
 
@@ -451,4 +452,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run3_mix_osdar_kitti_3class'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run4_kitti_3class'

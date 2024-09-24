@@ -191,12 +191,12 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                                           force_single_assignement=self.force_single_assignement)
 
         # Only perform the evaluation when there is at least 10 gt instances and 10 dt instances
-        if not self.evaluator.total_gt_instances >= 10:
-            print_log("The number of gt instances is less than 10, skip evaluation.")
+        if not self.evaluator.total_gt_instances >= 1:
+            print_log("The number of gt instances is less than 1, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
-        if not self.evaluator.total_dt_instances >= 10:
-            print_log("The number of dt instances is less than 10, skip evaluation.")
+        if not self.evaluator.total_dt_instances >= 1:
+            print_log("The number of dt instances is less than 1, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
 
         ######## Evaluation ########
@@ -1084,8 +1084,9 @@ def show_projections(key, gt_3d_bboxes, dt_3d_bboxes):
     ax.set_ylim(y_lower, y_upper)
     ax.set_zlim(z_lower, z_upper)
 
-    # Apply the calculated aspect ratio
-    ax.set_aspect('equal')
+    # equal aspect rati
+    ax.set_box_aspect([1, 1, 1])
+
     scale = vertices.flatten()
     ax.auto_scale_xyz(scale, scale, scale)
         
