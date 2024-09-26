@@ -67,6 +67,11 @@ class OSDaR23Dataset(Det3DDataset):
     #     'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80), (43, 64, 214)]
     # }
 
+    # METAINFO = {
+    #     'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
+    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
+    # }
+
     def __init__(self,
                  data_root: str,
                  ann_file: str,
