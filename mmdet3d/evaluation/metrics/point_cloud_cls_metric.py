@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import mmengine
 import numpy as np
 import torch
+import os
 from mmengine import load
 from mmengine.evaluator import BaseMetric
 from mmengine.logging import MMLogger, print_log
@@ -24,13 +25,15 @@ class PointCloudClsMetric(BaseMetric):
     def __init__(self, 
                  class_names: List[str],
                  save_graphics: bool = False,
-                 save_evaluation_resutls: bool = True):
+                 save_evaluation_resutls: bool = True,
+                 save_dir: Optional[str] = None):
         
         super().__init__()
         
         self.class_names = class_names
         self.save_graphics = save_graphics
         self.save_evaluation_resutls = save_evaluation_resutls
+        self.save_dir = save_dir
         
         self.ground_truth = []
         self.results = []
@@ -63,14 +66,25 @@ class PointCloudClsMetric(BaseMetric):
 
     def save_results(self, results: List, ytrue: List):
 
-        with open('results.txt', 'a') as f:
-            
+        if self.save_dir is not None:
+            if not osp.exists(self.save_dir):
+                os.makedirs(self.save_dir)
+
+        results_name = 'results.txt'
+        if self.save_dir is not None:
+            results_name = osp.join(self.save_dir, results_name)
+
+        ground_truth_name = 'ground_truth.txt'
+        if self.save_dir is not None:
+            ground_truth_name = osp.join(self.save_dir, ground_truth_name)
+
+        with open(results_name, 'a') as f:
             # result is a tensor like [-0.0711, -4.3492, -2.8881] form log softmax, cast to csv format
 
             for result in results:
                 f.write(','.join([str(x) for x in result.tolist()]) + '\n')
 
-        with open('ground_truth.txt', 'a') as f:
+        with open(ground_truth_name, 'a') as f:
             for y in ytrue:
                 f.write(str(y) + '\n')
 

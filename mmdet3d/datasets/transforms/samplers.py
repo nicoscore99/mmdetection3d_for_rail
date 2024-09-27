@@ -49,7 +49,7 @@ class Open3DAlphaShape(BaseTransform):
                 _data['num_points_in_gt'] = self.num_pts_sample
         except Exception as e:
             print(f"Error: {e}")
-            print(f"Upsampling inpossible for {data['path']}")
+            print(f"Upsampling impossible for {data['path']}")
             
         return _data
     
@@ -98,7 +98,7 @@ class Open3DBallPivoting(BaseTransform):
                 _data['points'].tensor = torch.cat((_points, _new_cloud), 0)
         except Exception as e:
             print(f"Error: {e}")
-            print(f"Upsampling inpossible for {data['path']}")
+            print(f"Upsampling impossible for {data['path']}")
             
         return _data
     

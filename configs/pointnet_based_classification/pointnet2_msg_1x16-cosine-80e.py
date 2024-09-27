@@ -14,16 +14,16 @@
 
 ######## Additional Hooks ########
 
-custom_hooks = [
-    dict(type='WandbLoggerHook', 
-         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling',
-         log_artifact=True,
-         init_kwargs={
-             'entity': 'railsensing',
-             'project': 'classification',
-             'name': 'rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling',
-        })
-]
+# custom_hooks = [
+#     dict(type='WandbLoggerHook', 
+#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling',
+#          log_artifact=True,
+#          init_kwargs={
+#              'entity': 'railsensing',
+#              'project': 'classification',
+#              'name': 'rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling',
+#         })
+# ]
 
 ####### Dataset Config #######
 dataset = 'GroundTruthClassificationDataset'
@@ -64,7 +64,10 @@ val_pipeline = [
 
 val_evaluator = dict(
     type='PointCloudClsMetric',
-    class_names=classes
+    class_names=classes, 
+    save_graphics=False,
+    save_evaluation_resutls=True,
+    save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/experiments/results_classification_training/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling_small/evaluations'
 )
 
 ############# OSADAR23 Dataset config #############
@@ -180,7 +183,7 @@ val_dataloader = dict(
     persistent_workers=True,
     dataset=dict(
         type='ConcatDataset',
-        shuffle=True,
+        # shuffle=True,
         datasets=[val_dataset_robo, val_dataset_osdar, val_dataset_kitti]
     )
 )
@@ -193,8 +196,8 @@ test_dataloader_generic = dict(
     dataset=None
 )
 
-test_dataloader = test_dataloader_generic
-# test_dataloader = val_dataloader
+# test_dataloader = test_dataloader_generic
+test_dataloader = val_dataloader
 test_evaluator = val_evaluator
 
 ####### Model Config #######
@@ -271,7 +274,7 @@ default_hooks = dict(
     logger=dict(type='LoggerHook', interval=50),
     param_scheduler=dict(type='ParamSchedulerHook'),
     checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True),
-    sampler_seed=dict(type='DistSamplerSeedHook'),
+    # sampler_seed=dict(type='DistSamplerSeedHook'),
     visualization=dict(type='Det3DVisualizationHook'))
 
 env_cfg = dict(
@@ -287,4 +290,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/rtx4090_pointnetpp_cls_all_data_256pts_yanx27_with_upsampling_normalized_size_correct_sampling'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/experiments/cluster_classification/test'
