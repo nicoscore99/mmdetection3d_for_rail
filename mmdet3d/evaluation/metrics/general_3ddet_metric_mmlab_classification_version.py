@@ -203,12 +203,19 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
                                                             class_accuracy_requirements=['easy'])
         
         evaluation_results_dict.update(ap_dict)
+
+        ap_neglecting_unknowns = self.evaluator.options_frame_metrics(method='ap_neglecting_unknowns',
+                                                                        iou_level=self.difficulty_levels,
+                                                                        class_accuracy_requirements=['easy'])
+        
+        evaluation_results_dict.update(ap_neglecting_unknowns)
         
         precision_dict = self.evaluator.options_frame_metrics(method='precision',
                                                                 iou_level=self.difficulty_levels,
                                                                 class_accuracy_requirements=['easy', 'hard'])
         
         evaluation_results_dict.update(precision_dict)
+
 
         precision_neglecting_unknowns = self.evaluator.options_frame_metrics(method='precision_neglecting_unknowns',
                                                                                 iou_level=self.difficulty_levels,
@@ -220,18 +227,24 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
                                                             iou_level=self.difficulty_levels,
                                                             class_accuracy_requirements=['easy', 'hard'])
         
-        evaluation_results_dict.update(recall_dict)      
+        evaluation_results_dict.update(recall_dict)
 
-        curves_dict['prec'] = self.evaluator.options_frame_curves(method='precision_recall_curve', iou_level=0.3)
-        curves_dict['roc'] = self.evaluator.options_frame_curves(method='roc_curve', iou_level=0.3)
-        curves_dict['cm'] = self.evaluator.options_frame_curves(method='confusion_matrix', iou_level=0.3)
+        recall_neglecting_unknowns = self.evaluator.options_frame_metrics(method='recall_neglecting_unknowns',
+                                                                            iou_level=self.difficulty_levels,
+                                                                            class_accuracy_requirements=['easy'])
+        
+        evaluation_results_dict.update(recall_neglecting_unknowns)
+
+        curves_dict['prec'] = self.evaluator.options_frame_curves(method='precision_recall_curve', iou_level=0.05)
+        curves_dict['roc'] = self.evaluator.options_frame_curves(method='roc_curve', iou_level=0.05)
+        curves_dict['cm'] = self.evaluator.options_frame_curves(method='confusion_matrix', iou_level=0.05)
 
         ######## Visualization ########
 
         if self.save_graphics:
-            self.save_plot(plot=self.evaluator.options_frame_plots(method='precision_recall_plot', iou_level=0.3), filename = 'precision_recall_plot_pointpillars_kitti.png')
-            self.save_plot(plot=self.evaluator.options_frame_plots(method='roc_plot', iou_level=0.3), filename = 'roc_plot_pointpillars_kitti.png')
-            self.save_plot(plot=self.evaluator.options_frame_plots(method='confusion_matrix_plot', iou_level=0.3), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.options_frame_plots(method='precision_recall_plot', iou_level=0.1), filename = 'precision_recall_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.options_frame_plots(method='roc_plot', iou_level=0.1), filename = 'roc_plot_pointpillars_kitti.png')
+            self.save_plot(plot=self.evaluator.options_frame_plots(method='confusion_matrix_plot', iou_level=0.1), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
 
         ####### Saving the evaluation results #######
 
@@ -506,9 +519,11 @@ class EvaluatorMetrics():
         
         self.metrics_method = {
             'ap': self.ap,
+            'ap_neglecting_unknowns': self.ap_neglecting_unknowns,
             'precision': self.precision,
             'precision_neglecting_unknowns': self.precision_neglecting_unknowns,
-            'recall': self.recall
+            'recall': self.recall,
+            'recall_neglecting_unknowns': self.recall_neglecting_unknowns,
         }
         
         self.curves_method = {
@@ -605,27 +620,62 @@ class EvaluatorMetrics():
                             
         self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
 
-    def filter_for_prediction_class(self,
+    def filter_for_class(self,
                                     filter_dict: dict,
-                                    class_idx: int) -> dict:
+                                    class_idx: Union[list, int]) -> dict:
         
-        dt_criterion = filter_dict['dt_labels'] == class_idx
-        gt_criterion = filter_dict['gt_labels'] == class_idx
+        if not isinstance(class_idx, list):
+            class_idx = [class_idx]
 
-        filtered_dict = {
-            'dt_labels': filter_dict['dt_labels'][dt_criterion],
-            'dt_scores': filter_dict['dt_scores'][dt_criterion],
-            'dt_assigned_gt_indices': filter_dict['dt_assigned_gt_indices'][dt_criterion],
-            'dt_max_overlaps': filter_dict['dt_max_overlaps'][dt_criterion],
-            'dt_assigned_labels': filter_dict['dt_assigned_labels'][dt_criterion],
-            'gt_labels': filter_dict['gt_labels'][gt_criterion],
-            'gt_assigned_or_not_binary': filter_dict['gt_assigned_or_not_binary'][gt_criterion]
+        new_dict = copy.deepcopy(filter_dict)
+        
+        # dt_criterion = filter_dict['dt_labels'] == class_idx
+        # gt_criterion = filter_dict['gt_labels'] == class_idx
+
+        dt_criterion = torch.isin(new_dict['dt_labels'], torch.tensor(class_idx))
+        gt_criterion = torch.isin(new_dict['gt_labels'], torch.tensor(class_idx))
+
+        new_dict = {
+            'dt_labels': new_dict['dt_labels'][dt_criterion],
+            'dt_scores': new_dict['dt_scores'][dt_criterion],
+            'dt_assigned_gt_indices': new_dict['dt_assigned_gt_indices'][dt_criterion],
+            'dt_max_overlaps': new_dict['dt_max_overlaps'][dt_criterion],
+            'dt_assigned_labels': new_dict['dt_assigned_labels'][dt_criterion],
+            'gt_labels': new_dict['gt_labels'][gt_criterion],
+            'gt_assigned_or_not_binary': new_dict['gt_assigned_or_not_binary'][gt_criterion]
         }
         
-        assert len(filtered_dict['dt_labels']) == len(filtered_dict['dt_scores']) == len(filtered_dict['dt_assigned_gt_indices']) == len(filtered_dict['dt_max_overlaps']) == len(filtered_dict['dt_assigned_labels'])
-        assert len(filtered_dict['gt_labels']) == len(filtered_dict['gt_assigned_or_not_binary'])
+        assert len(new_dict['dt_labels']) == len(new_dict['dt_scores']) == len(new_dict['dt_assigned_gt_indices']) == len(new_dict['dt_max_overlaps']) == len(new_dict['dt_assigned_labels'])
+        assert len(new_dict['gt_labels']) == len(new_dict['gt_assigned_or_not_binary'])
 
-        return filtered_dict
+        return new_dict
+
+    def filter_for_prediction_class(self,
+                                filter_dict: dict,
+                                class_idx: Union[list, int]) -> dict:
+        
+        if not isinstance(class_idx, list):
+            class_idx = [class_idx]
+
+        new_dict = copy.deepcopy(filter_dict)
+
+        dt_criterion = torch.isin(new_dict['dt_labels'], torch.tensor(class_idx))
+
+        new_dict = {
+            'dt_labels': new_dict['dt_labels'][dt_criterion],
+            'dt_scores': new_dict['dt_scores'][dt_criterion],
+            'dt_assigned_gt_indices': new_dict['dt_assigned_gt_indices'][dt_criterion],
+            'dt_max_overlaps': new_dict['dt_max_overlaps'][dt_criterion],
+            'dt_assigned_labels': new_dict['dt_assigned_labels'][dt_criterion],
+            'gt_labels': new_dict['gt_labels'],
+            'gt_assigned_or_not_binary': new_dict['gt_assigned_or_not_binary']
+        }
+        
+        assert len(new_dict['dt_labels']) == len(new_dict['dt_scores']) == len(new_dict['dt_assigned_gt_indices']) == len(new_dict['dt_max_overlaps']) == len(new_dict['dt_assigned_labels'])
+        assert len(new_dict['gt_labels']) == len(new_dict['gt_assigned_or_not_binary'])
+
+        return new_dict
+
 
     def tp_detection_and_label(self,
                                filtered_dict: dict) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -763,10 +813,10 @@ class EvaluatorMetrics():
         if not level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(level)
             
-        results_dict = self.threshold_specific_results_dict[level]
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
         
         if class_idx is not None:
-            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+            results_dict = self.filter_for_class(filter_dict=results_dict, class_idx=class_idx)
         
         dt_tp_binary = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=results_dict)
         
@@ -776,6 +826,47 @@ class EvaluatorMetrics():
         
         precision, recall = self.generate_precision_recall_curve(_dt_tp_binary=dt_tp_binary, _dt_confidence=results_dict['dt_scores'], _gt_labels=results_dict['gt_labels'])
         
+        ap = self.compute_ap(precision=precision, recall=recall)
+        return round(ap, 3)
+    
+    def ap_neglecting_unknowns(self,
+                                 level: float,
+                                    class_accuracy_requirement: str,
+                                    class_idx: Optional[int] = None) -> float:
+        
+        """
+
+        Average precision score, neglecting all detectins that were classified 'unknown'.
+
+        Args:
+            level (float): The IoU level.
+            class_accuracy_requirement (str): The class accuracy requirement.
+            class_idx (Optional[int]): The class index. Defaults to None.
+
+        Returns:
+            float: The average precision score.
+
+        """
+
+        if not level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(level)
+
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
+
+        class_indices = range(len(self._classes))
+        if class_idx is not None:
+            class_indices = [class_idx]
+
+        results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_indices)
+
+        dt_tp_binary = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=results_dict)
+
+        # prevent case of no detections
+        if dt_tp_binary.nelement() == 0 or results_dict['dt_labels'].nelement() == 0 or results_dict['gt_labels'].nelement() == 0:
+            return 0.0
+        
+        precision, recall = self.generate_precision_recall_curve(_dt_tp_binary=dt_tp_binary, _dt_confidence=results_dict['dt_scores'], _gt_labels=results_dict['gt_labels'])
+
         ap = self.compute_ap(precision=precision, recall=recall)
         return round(ap, 3)
     
@@ -801,10 +892,14 @@ class EvaluatorMetrics():
         if not level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(level)
             
-        results_dict = self.threshold_specific_results_dict[level]
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
+
+        class_indices = range(len(self._classes))
+        if class_idx is not None:
+            class_indices = [class_idx]
         
         if class_idx is not None:
-            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+            results_dict = self.filter_for_class(filter_dict=results_dict, class_idx=class_idx)
             
         dt_tp_binary = self.class_accuracy_requirement_map[class_accuracy_requirement](filtered_dict=results_dict)
         
@@ -840,10 +935,14 @@ class EvaluatorMetrics():
         if not level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(level)
             
-        results_dict = self.threshold_specific_results_dict[level]
-        
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
+
+        class_indices = range(len(self._classes))
         if class_idx is not None:
-            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+            class_indices = [class_idx]
+
+        # filter out all detections that were classified as 'unknown'
+        results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_indices)
             
         dt_tp_binary = self.class_accuracy_requirement_map['easy'](filtered_dict=results_dict)
         
@@ -883,10 +982,10 @@ class EvaluatorMetrics():
         if not level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(level)
             
-        results_dict = self.threshold_specific_results_dict[level]
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
         
         if class_idx is not None:
-            results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_idx)
+            results_dict = self.filter_for_class(filter_dict=results_dict, class_idx=class_idx)
             
         # prevent case of no detections
         if len(results_dict['gt_labels']) == 0 or results_dict['gt_assigned_or_not_binary'].nelement() == 0:
@@ -894,6 +993,44 @@ class EvaluatorMetrics():
         
         recall = results_dict['gt_assigned_or_not_binary'].sum().item() / len(results_dict['gt_assigned_or_not_binary'])
         
+        return round(recall, 3)
+    
+    def recall_neglecting_unknowns(self,
+                level: float,
+                class_accuracy_requirement: str,
+                class_idx: Optional[int] = None) -> float:
+        
+        """
+
+        Recall score, neglecting all detectins that were classified 'unknown'.
+
+        Args:
+            level (float): The IoU level.
+            class_accuracy_requirement (str): The class accuracy requirement.
+            class_idx (Optional[int]): The class index. Defaults to None.
+
+        Returns:
+            float: The recall score.
+
+        """
+
+        if not level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(level)
+
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
+
+        class_indices = range(len(self._classes))
+        if class_idx is not None:
+            class_indices = [class_idx]
+
+        results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_indices)
+
+        # prevent case of no detections
+        if len(results_dict['gt_labels']) == 0 or results_dict['gt_assigned_or_not_binary'].nelement() == 0:
+            return 0.0
+
+        recall = results_dict['gt_assigned_or_not_binary'].sum().item() / len(results_dict['gt_assigned_or_not_binary'])
+
         return round(recall, 3)
     
     ######### Methods visuals #########
@@ -914,7 +1051,7 @@ class EvaluatorMetrics():
         if not iou_level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(iou_level)
             
-        results_dict = self.threshold_specific_results_dict[iou_level]
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
         dt_tp_binary = self.tp_detection_and_label(filtered_dict=results_dict)
         precision, recall = self.generate_precision_recall_curve(_dt_tp_binary=dt_tp_binary, _dt_confidence=results_dict['dt_scores'], _gt_labels=results_dict['gt_labels'])
         
@@ -926,7 +1063,7 @@ class EvaluatorMetrics():
         if not iou_level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(iou_level)
             
-        results_dict = self.threshold_specific_results_dict[iou_level]
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
         dt_tp_binary = self.tp_detection(filtered_dict=results_dict)
         fpr, tpr, _ = sk_metrics.roc_curve(y_true=dt_tp_binary, y_score=results_dict['dt_scores'])
         return {'fpr': fpr, 'tpr': tpr}
@@ -947,7 +1084,7 @@ class EvaluatorMetrics():
         if not iou_level in self.threshold_specific_results_dict.keys():
             self.val_batch_evaluation(iou_level)
             
-        results_dict = self.threshold_specific_results_dict[iou_level]
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
         
         relevant_inds = results_dict['dt_assigned_labels'] != -1
         _y_true = results_dict['dt_labels'][relevant_inds]
@@ -1030,7 +1167,7 @@ class EvaluatorMetrics():
         if not level in self.threshold_specific_results_dict.keys():
                 self.val_batch_evaluation(level)
                 
-        results_dict = self.threshold_specific_results_dict[level]
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
         
         results_dict_np = {k: v.cpu().numpy() for k, v in results_dict.items()}
         
