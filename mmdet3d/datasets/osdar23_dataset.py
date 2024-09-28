@@ -52,10 +52,10 @@ class OSDaR23Dataset(Det3DDataset):
             Defaults to [0, -40, -3, 70.4, 40, 0.0].
     """
     # TODO: use full classes of kitti
-    METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car'),
-        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
-    }
+    # METAINFO = {
+    #     'classes': ('Pedestrian', 'Cyclist', 'Car'),
+    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
+    # }
 
     # METAINFO = {
     #     'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
@@ -67,10 +67,10 @@ class OSDaR23Dataset(Det3DDataset):
     #     'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (38, 222, 129), (80, 80, 80), (43, 64, 214)]
     # }
 
-    # METAINFO = {
-    #     'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
-    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
-    # }
+    METAINFO = {
+        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
+        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
+    }
 
     def __init__(self,
                  data_root: str,

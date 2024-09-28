@@ -52,22 +52,22 @@ class KittiDataset(Det3DDataset):
             Defaults to [0, -40, -3, 70.4, 40, 0.0].
     """
     # TODO: use full classes of kitti
-    METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck',
-                    'Person_sitting', 'Tram', 'Misc'),
-        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192),
-                    (197, 226, 255), (0, 60, 100), (0, 0, 142), (255, 77, 255)]
-    }
+    # METAINFO = {
+    #     'classes': ('Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck',
+    #                 'Person_sitting', 'Tram', 'Misc'),
+    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192),
+    #                 (197, 226, 255), (0, 60, 100), (0, 0, 142), (255, 77, 255)]
+    # }
     
     # METAINFO = {
     # 'classes': ('Pedestrian', 'Cyclist', 'Car'),
     # 'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
     # }
     
-    # METAINFO = {
-    # 'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
-    # 'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
-    # }
+    METAINFO = {
+    'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
+    'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
+    }
 
     def __init__(self,
                  data_root: str,

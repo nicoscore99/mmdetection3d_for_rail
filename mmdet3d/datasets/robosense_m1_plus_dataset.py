@@ -61,10 +61,10 @@ class ROBOSENSE_M1_PLUS(Det3DDataset):
     #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 142), (0, 0, 230), (0, 80, 100), (0, 0, 0)]
     # }
     
-    # METAINFO = {
-    #     'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
-    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
-    # }
+    METAINFO = {
+        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
+        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42), (0, 0, 192)]
+    }
 
     def __init__(self,
                  data_root: str,
