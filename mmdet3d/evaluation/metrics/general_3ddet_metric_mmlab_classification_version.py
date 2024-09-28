@@ -22,6 +22,7 @@ from mmdet3d.registry import METRICS
 from mmdet3d.models.task_modules.assigners.max_3d_iou_assigner import Max3DIoUAssigner
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from mmengine.structures import InstanceData
+import math
 
 @METRICS.register_module()
 class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
@@ -75,6 +76,7 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
                  evaluation_file_name: Optional[str] = 'evaluation_results.json',
                  backend_args: Optional[dict] = None,
                  save_random_viz: Optional[bool] = False,
+                 save_tp_positioning: Optional[bool] = False,
                  random_viz_keys: Optional[int] = None,
                  classifcation_conf_threshold: Optional[float] = 0.85):
     
@@ -97,6 +99,7 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
         self.metric = metric
         self.num_random_keys_to_be_visualized = random_viz_keys
         self.save_random_viz = save_random_viz
+        self.save_tp_positioning = save_tp_positioning
         self.classifcation_conf_threshold = classifcation_conf_threshold
 
         if self.format_only:
@@ -256,6 +259,10 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
             
             for lev in self.difficulty_levels:
                 self.evaluator.save_threshold_specific_results(level=lev, output_dir=self.output_dir)
+                
+        if self.save_tp_positioning:
+            self.evaluator.save_dt_positioning(output_dir=self.output_dir, iou_level=0.001)
+            self.evaluator.save_gt_poisitioning(output_dir=self.output_dir, iou_level=0.001)
 
         ######## Visualization of random keys ########
         self.visualize_random_keys(_gt_annos=gt_annos_valid, _dt_annos=dt_annos_valid, num_keys=self.num_random_keys_to_be_visualized)
@@ -365,6 +372,7 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
             label = torch.argmax(prob_vec)
             conf = torch.max(prob_vec)
             
+            # conf will be zeros if to small to be classifiable
             if conf < self.classifcation_conf_threshold:
                 label = torch.tensor(-1)
             
@@ -571,6 +579,39 @@ class EvaluatorMetrics():
         gt_instance_mask = torch.isin(gt_indices, indices_assigned_to_dt)
         return gt_instance_mask
     
+    def get_gt_assigned_labels(self, _gt_instances, _assign_result_gt_inds, _dt_instances) -> torch.Tensor:
+            
+        """
+        
+        Args:
+            _gt_instances (InstanceData): The ground truth instances.
+            _assign_result_gt_inds (torch.Tensor): The indices of the ground truth instances that are assigned to a detection.
+            _dt_instances (InstanceData): The detection instances.
+
+        Returns:
+            torch.Tensor: The assigned labels from the detections.
+        """
+        
+        _dt_instance_labels = _dt_instances.labels_3d
+        _gt_instance_labels = _gt_instances.labels_3d
+        
+        _gt_assigned_labels = []
+        for i in range(len(_gt_instances.bboxes_3d)):
+            assigned_gt_results_inds_mask = _assign_result_gt_inds == (i + 1)
+            assigned_dt_labels = _dt_instance_labels[assigned_gt_results_inds_mask]
+            _gt_assigned_labels.append(assigned_dt_labels)
+            
+        max_len = 10 # fixed value, expecting no where more than 10 detections per ground truth
+        padded_tensors = [torch.nn.functional.pad(t.float(), (0, max_len - t.size(0)), value=float('nan')) for t in _gt_assigned_labels]
+        
+        if padded_tensors:
+            resulting_tensor = torch.stack(padded_tensors)
+        else:
+            resulting_tensor = torch.tensor([])
+        
+        return resulting_tensor
+        
+    
     def val_batch_evaluation(self, 
                              iou_threshold: float) -> dict:
         
@@ -587,7 +628,7 @@ class EvaluatorMetrics():
         
         gt_labels = []                  # Labels of the ground truth instances
         gt_assigned_or_not_binary = []  # For each ground truth instance, if it is assigned to a detection or not (1 for assigned, 0 for not assigned)    
-
+        gt_assigned_labels = []         # For each ground truth instance, the assigned label from the detection
         
         for i, key in enumerate(self._gt_annos_valid.keys()):
             
@@ -603,6 +644,8 @@ class EvaluatorMetrics():
             
             gt_labels.append(gt_instance.labels_3d)
             gt_assigned_or_not_binary.append(self.get_unassigned_gt_instances(_gt_instances=gt_instance, _assign_result_gt_inds=assign_result.gt_inds))
+            # For each ground truth instance, all labels from the assigned detections
+            gt_assigned_labels.append(self.get_gt_assigned_labels(_gt_instances=gt_instance, _assign_result_gt_inds=assign_result.gt_inds, _dt_instances=dt_instance))
 
         # assert that all out the lists have the same length
         assert len(dt_labels) == len(dt_scores) == len(dt_assigned_gt_indices) == len(dt_max_overlaps) == len(dt_assigned_labels)
@@ -615,7 +658,8 @@ class EvaluatorMetrics():
             'dt_max_overlaps': torch.cat(dt_max_overlaps),
             'dt_assigned_labels': torch.cat(dt_assigned_labels),
             'gt_labels': torch.cat(gt_labels),
-            'gt_assigned_or_not_binary': torch.cat(gt_assigned_or_not_binary),        
+            'gt_assigned_or_not_binary': torch.cat(gt_assigned_or_not_binary),
+            'gt_assigned_labels': torch.cat(gt_assigned_labels)
         }
                             
         self.threshold_specific_results_dict[iou_threshold] = threshold_specific_results
@@ -642,11 +686,12 @@ class EvaluatorMetrics():
             'dt_max_overlaps': new_dict['dt_max_overlaps'][dt_criterion],
             'dt_assigned_labels': new_dict['dt_assigned_labels'][dt_criterion],
             'gt_labels': new_dict['gt_labels'][gt_criterion],
-            'gt_assigned_or_not_binary': new_dict['gt_assigned_or_not_binary'][gt_criterion]
+            'gt_assigned_or_not_binary': new_dict['gt_assigned_or_not_binary'][gt_criterion],
+            'gt_assigned_labels': new_dict['gt_assigned_labels'][gt_criterion]
         }
         
         assert len(new_dict['dt_labels']) == len(new_dict['dt_scores']) == len(new_dict['dt_assigned_gt_indices']) == len(new_dict['dt_max_overlaps']) == len(new_dict['dt_assigned_labels'])
-        assert len(new_dict['gt_labels']) == len(new_dict['gt_assigned_or_not_binary'])
+        assert len(new_dict['gt_labels']) == len(new_dict['gt_assigned_or_not_binary']) == len(new_dict['gt_assigned_labels'])
 
         return new_dict
 
@@ -668,14 +713,14 @@ class EvaluatorMetrics():
             'dt_max_overlaps': new_dict['dt_max_overlaps'][dt_criterion],
             'dt_assigned_labels': new_dict['dt_assigned_labels'][dt_criterion],
             'gt_labels': new_dict['gt_labels'],
-            'gt_assigned_or_not_binary': new_dict['gt_assigned_or_not_binary']
+            'gt_assigned_or_not_binary': new_dict['gt_assigned_or_not_binary'],
+            'gt_assigned_labels': new_dict['gt_assigned_labels']
         }
         
         assert len(new_dict['dt_labels']) == len(new_dict['dt_scores']) == len(new_dict['dt_assigned_gt_indices']) == len(new_dict['dt_max_overlaps']) == len(new_dict['dt_assigned_labels'])
         assert len(new_dict['gt_labels']) == len(new_dict['gt_assigned_or_not_binary'])
 
         return new_dict
-
 
     def tp_detection_and_label(self,
                                filtered_dict: dict) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -1019,17 +1064,25 @@ class EvaluatorMetrics():
 
         results_dict = copy.deepcopy(self.threshold_specific_results_dict[level])
 
-        class_indices = range(len(self._classes))
+        all_class_indices = range(len(self._classes))
         if class_idx is not None:
             class_indices = [class_idx]
-
-        results_dict = self.filter_for_prediction_class(filter_dict=results_dict, class_idx=class_indices)
+        else:
+            class_indices = all_class_indices
+            
+        # filter out all detections that were classified as 'unknown'
+        results_dict = self.filter_for_class(filter_dict=results_dict, class_idx=class_indices)
 
         # prevent case of no detections
         if len(results_dict['gt_labels']) == 0 or results_dict['gt_assigned_or_not_binary'].nelement() == 0:
             return 0.0
-
-        recall = results_dict['gt_assigned_or_not_binary'].sum().item() / len(results_dict['gt_assigned_or_not_binary'])
+        
+        all_gt = len(results_dict['gt_labels'])
+        gt_assigned_labels = results_dict['gt_assigned_labels']
+        tp_list = [torch.any(torch.isin(gt_assigned_labels[i], torch.tensor(all_class_indices))) for i in range(len(gt_assigned_labels))]
+        tp = sum(tp_list).item()
+        
+        recall = tp / all_gt
 
         return round(recall, 3)
     
@@ -1180,6 +1233,7 @@ class EvaluatorMetrics():
         # remove 'gt_labels' and 'gt_assigned_or_not_binary' from the results_dict_np
         results_dict_np.pop('gt_labels')
         results_dict_np.pop('gt_assigned_or_not_binary')
+        results_dict_np.pop('gt_assigned_labels')
         
         # assert that all key values have equal lenght
         assert len(results_dict_np['dt_labels']) == len(results_dict_np['dt_scores']) == len(results_dict_np['dt_assigned_gt_indices']) == len(results_dict_np['dt_max_overlaps']) == len(results_dict_np['dt_assigned_labels'])
@@ -1189,6 +1243,64 @@ class EvaluatorMetrics():
         df.to_csv(osp.join(output_dir, f'threshold_specific_results_{level}.csv'), index=False)
         
         print(f"Threshold specific results for level {level} saved successfully.")
+        
+    def save_dt_positioning(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        dt_tp_binary = self.class_accuracy_requirement_map['easy'](filtered_dict=results_dict)
+        
+        # from _dt_annos_valid save the position of all detections
+        
+        _x = []
+        _y = []
+        _z = []
+        
+        for key in self._dt_annos_valid.keys():
+            dt_instance = self._dt_annos_valid[key]
+            _x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
+            
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
+        
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'tp': dt_tp_binary.cpu().numpy()})
+        
+        df.to_csv(osp.join(output_dir, 'dt_positioning.csv'), index=False)
+        
+    def save_gt_poisitioning(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        gt_assigned_or_not_binary = results_dict['gt_assigned_or_not_binary']
+        
+        _x = []
+        _y = []
+        _z = []
+        
+        for key in self._gt_annos_valid.keys():
+            gt_instance = self._gt_annos_valid[key]
+            _x.append(gt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(gt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(gt_instance.bboxes_3d[:, 2].cpu().numpy())
+            
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
+        
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'assigned': gt_assigned_or_not_binary.cpu().numpy()})
+        
+        df.to_csv(osp.join(output_dir, 'gt_positioning.csv'), index=False)
+        
+    
     
 ####### Helper functions #######
 
