@@ -31,7 +31,8 @@ kategory_mapping = {
     'Pedestrian': ['Pedestrian'],
     'Cyclist': ['Cyclist'],
     'RoadVehicle': ['Car', 'Van', 'Truck'],
-    'Train': ['Train', 'Tram']
+    'Train': ['Train', 'Tram'],
+    'Unknown': ['DontCare', 'Unknown'],
 }
 
 kitti_categories_wanted = ['Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck', 'Tram', 'Train']
@@ -569,7 +570,7 @@ def update_osdar23_infos(pkl_path, out_dir):
     # }
     
     METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train')
+        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train', 'Unknown'),
     }
     
     # METAINFO = {
@@ -581,6 +582,8 @@ def update_osdar23_infos(pkl_path, out_dir):
 
     print(f'Reading from input file: {pkl_path}.')
     data_list = mmengine.load(pkl_path)
+    print('Pkl path:', pkl_path)
+    print('Length of data_list:', len(data_list))
     print('Start updating:')
     converted_list = []
 
@@ -811,6 +814,7 @@ def update_scannet_infos(pkl_path, out_dir):
     }
     print(f'Reading from input file: {pkl_path}.')
     data_list = mmengine.load(pkl_path)
+    print('Length of data_list:', len(data_list))
     print('Start updating:')
     converted_list = []
     for ori_info_dict in mmengine.track_iter_progress(data_list):
