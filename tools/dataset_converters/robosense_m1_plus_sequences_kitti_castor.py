@@ -188,8 +188,8 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
         self.release_data = None
         self.labeled_frame_names = None
         
-        self.train_partitions = 0.7
-        self.val_partitions = 0.3
+        self.train_partitions = 0.0
+        self.val_partitions = 1.0
         
         self.lidar_sensors_list = ['lidar']
         
@@ -290,7 +290,8 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
         
         for frame_name, annotations in zip(frame_names, frame_annotations):
             if len(annotations) == 0:
-                raise ValueError(f'No annotations found for frame {frame_name}')
+                # raise ValueError(f'No annotations found for frame {frame_name}')
+                print_log(f'No annotations found for frame {frame_name}', logger='current')
     
     def get_labeled_samples(self, data):
             
@@ -302,7 +303,7 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
                     if sample['labels']['ground-truth']:
                         if sample['labels']['ground-truth']['label_status'] == 'REVIEWED':
                             labeled_samples.append(sample)
-                        
+                    
             
             # Log percentage of labeled samples
             print_log('Percentage of labeled samples: {:.2f}%'.format(len(labeled_samples) / len(data['dataset']['samples']) * 100))         

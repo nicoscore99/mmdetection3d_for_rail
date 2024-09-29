@@ -5,6 +5,7 @@
 
 custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
                                'mmdet3d.datasets.kitti_dataset',
+                                 'mmdet3d.datasets.robosense_m1_plus_dataset',
                                'mmdet3d.engine.hooks.wandb_logger_hook',
                                'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)                
 
@@ -22,7 +23,7 @@ custom_hooks = [
          init_kwargs={
              'entity': 'railsensing',
              'project': 'centerpoint',
-             'name': 'rtx4090_cp_run5_mix_kitti_osdar23_4class_80m',
+             'name': 'rtx4090_cp_run8_mix_kitti_osdar23_4class_80m',
              })
 ]
 
@@ -30,7 +31,7 @@ custom_hooks = [
 
 # class_names = ['Pedestrian', 'Cyclist', 'Car']
 class_names = ['Pedestrian', 'Cyclist', 'RoadVehicle', 'Train']
-point_cloud_range = [0, -40, -3.0, 40, 80, 1.0]
+point_cloud_range = [0, -40, -3.0, 80, 40, 1.0]
 # point_cloud_range = [0, -40, -3, 70.4, 40, 3.0]
 point_cloud_range_inference = point_cloud_range
 input_modality = dict(use_lidar=True, use_camera=False)
@@ -219,7 +220,7 @@ osdar23_val_dataset = dict(
 
 ############# Robosense Specific Config #############
 
-robosense_dataroot = 'data/robosense_m1_plus_sequences/'
+robosense_dataroot = 'data/robosense_cls/'
 robosense_dataset_type = 'ROBOSENSE_M1_PLUS'
 
 robosense_db_sampler = dict(
@@ -295,7 +296,7 @@ train_dataloader = dict(
     dataset=dict(
         type='ConcatDataset',
         shuffle=True,
-        datasets=[robosense_train_dataset]
+        datasets=[kitti_repeat_dataset, repeat_osdar23_train_dataset, robosense_repeat_dataset]
     )
 )
 
@@ -308,7 +309,7 @@ val_dataloader = dict(
     dataset=dict(
         type='ConcatDataset',
         shuffle=True,
-        datasets=[robosense_val_dataset]
+        datasets=[robosense_val_dataset, kitti_val_dataset, osdar23_val_dataset]
     )
 )
 
@@ -318,7 +319,7 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range_inference,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_mixed_finetune_robosense_4class_80m',
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run8_mix_kitti_osdar23_4class_80m',
     save_evaluation_results = True,
     save_random_viz = False,
     random_viz_keys = None)
@@ -335,7 +336,7 @@ visualizer = dict(
 # visualizer = dict(
 #     type='Det3DLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 
-
+repeat_osdar23_train_dataset
 
 ############# Model config #############
 
@@ -529,4 +530,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_mixed_finetune_robosense_4class_80m'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run8_mix_kitti_osdar23_4class_80m'

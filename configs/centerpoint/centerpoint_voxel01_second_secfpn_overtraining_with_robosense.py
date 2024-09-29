@@ -30,7 +30,7 @@ robosense_m1_plus_dataset = dict(type='ROBOSENSE_M1_PLUS')
 ############# Generic variables #############
 
 class_names = ['Pedestrian', 'Cyclist', 'RoadVehicle', 'Train']
-point_cloud_range = [0, -40, -3.0, 40, 80, 1.0]
+point_cloud_range = [0, -40, -3.0, 80, 40, 1.0]
 point_cloud_range_inference = point_cloud_range
 input_modality = dict(use_lidar=True, use_camera=False)
 metainfo = dict(classes=class_names)
@@ -177,6 +177,7 @@ val_evaluator = dict(
     output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_mixed_finetune_robosense_4class_80m',
     save_graphics = False,
     save_evaluation_results = True,
+    save_tp_positioning = True,
     save_random_viz = False,
     random_viz_keys = None)
 

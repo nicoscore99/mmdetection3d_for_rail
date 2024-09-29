@@ -80,6 +80,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  evaluation_file_name: Optional[str] = 'evaluation_results.json',
                  backend_args: Optional[dict] = None,
                  save_random_viz: Optional[bool] = False,
+                save_tp_positioning: Optional[bool] = False,
                  random_viz_keys: Optional[int] = None) -> 5:
     
         self.default_prefix = 'General 3D Det metric mmlab'
@@ -101,6 +102,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         self.metric = metric
         self.num_random_keys_to_be_visualized = random_viz_keys
         self.save_random_viz = save_random_viz
+        self.save_tp_positioning = save_tp_positioning
 
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
@@ -229,6 +231,10 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             self.save_plot(plot=self.evaluator.options_frame_plots(method='precision_recall_plot', iou_level=0.3), filename = 'precision_recall_plot_pointpillars_kitti.png')
             self.save_plot(plot=self.evaluator.options_frame_plots(method='roc_plot', iou_level=0.3), filename = 'roc_plot_pointpillars_kitti.png')
             self.save_plot(plot=self.evaluator.options_frame_plots(method='confusion_matrix_plot', iou_level=0.3), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
+            
+        if self.save_tp_positioning:
+            self.evaluator.save_dt_positioning(output_dir=self.output_dir, iou_level=0.3)
+            self.evaluator.save_gt_positioning(output_dir=self.output_dir, iou_level=0.3)
 
         ####### Saving the evaluation results #######
 
@@ -919,12 +925,68 @@ class EvaluatorMetrics():
         method: str,
         iou_level: float):
         return self.plots_method[method](iou_level)
-        
     
     def options_frame_curves(self,
         method: str,
         iou_level: float):
         return self.curves_method[method](iou_level)
+    
+    def save_dt_positioning(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        dt_tp_binary = self.class_accuracy_requirement_map['easy'](filtered_dict=results_dict)
+        
+        # from _dt_annos_valid save the position of all detections
+        
+        _x = []
+        _y = []
+        _z = []
+        
+        for key in self._dt_annos_valid.keys():
+            dt_instance = self._dt_annos_valid[key]
+            _x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
+            
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
+        
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'tp': dt_tp_binary.cpu().numpy()})
+        
+        df.to_csv(osp.join(output_dir, 'dt_positioning.csv'), index=False)
+        
+    def save_gt_positioning(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        gt_assigned_or_not_binary = results_dict['gt_assigned_or_not_binary']
+        
+        _x = []
+        _y = []
+        _z = []
+        
+        for key in self._gt_annos_valid.keys():
+            gt_instance = self._gt_annos_valid[key]
+            _x.append(gt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(gt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(gt_instance.bboxes_3d[:, 2].cpu().numpy())
+            
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
+        
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'assigned': gt_assigned_or_not_binary.cpu().numpy()})
+        
+        df.to_csv(osp.join(output_dir, 'gt_positioning.csv'), index=False)
+      
     
 ####### Helper functions #######
 

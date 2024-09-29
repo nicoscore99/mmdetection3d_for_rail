@@ -51,10 +51,10 @@ class ROBOSENSE_M1_PLUS(Det3DDataset):
             Defaults to [0, -40, -3, 70.4, 40, 0.0].
     """
 
-    METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car'),
-        'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
-    }
+    # METAINFO = {
+    #     'classes': ('Pedestrian', 'Cyclist', 'Car'),
+    #     'palette': [(106, 0, 228), (119, 11, 32), (165, 42, 42)]
+    # }
     
     # METAINFO = {
     #     'classes': ('Pedestrian', 'Car', 'Truck', 'Train', 'Cyclist', 'Tram', 'Unknown'),
