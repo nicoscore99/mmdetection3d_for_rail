@@ -296,7 +296,7 @@ train_dataloader = dict(
     dataset=dict(
         type='ConcatDataset',
         shuffle=True,
-        datasets=[kitti_repeat_dataset, repeat_osdar23_train_dataset, robosense_repeat_dataset]
+        datasets=[kitti_repeat_dataset, repeat_osdar23_train_dataset]
     )
 )
 
@@ -309,7 +309,7 @@ val_dataloader = dict(
     dataset=dict(
         type='ConcatDataset',
         shuffle=True,
-        datasets=[robosense_val_dataset, kitti_val_dataset, osdar23_val_dataset]
+        datasets=[kitti_val_dataset, osdar23_val_dataset]
     )
 )
 

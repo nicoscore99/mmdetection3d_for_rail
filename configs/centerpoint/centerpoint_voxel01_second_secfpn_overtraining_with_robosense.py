@@ -14,18 +14,18 @@ robosense_m1_plus_dataset = dict(type='ROBOSENSE_M1_PLUS')
 ############# Additional Hooks #############
 
 
-# default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_mixed_finetune_robosense_4class_80m',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'centerpoint',
-#              'name': 'rtx4090_cp_mixed_finetune_robosense_4class_80m',
-#              })
-# ]
+default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=4, by_epoch=True))
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_mixed_finetune_robosense_4class_80m_v3',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'centerpoint',
+             'name': 'rtx4090_cp_mixed_finetune_robosense_4class_80m_v3',
+             })
+]
 
 ############# Generic variables #############
 
@@ -131,6 +131,17 @@ robosense_train_dataset = dict(
     metainfo=metainfo,
     backend_args=None)
 
+robosense_val_train_dataset = dict(
+    type=robosense_dataset_type,
+    data_root=robosense_dataroot,
+    data_prefix=dict(pts='points'),
+    ann_file='kitti_infos_val.pkl',
+    pipeline=robosense_train_pipeline,
+    modality=input_modality,
+    test_mode=True,
+    metainfo=metainfo,
+    backend_args=None)
+
 robosense_val_dataset = dict(
     type=robosense_dataset_type,
     data_root=robosense_dataroot,
@@ -156,7 +167,11 @@ train_dataloader = dict(
     num_workers=4,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
-    dataset=robosense_train_dataset
+    dataset=dict(
+        type='ConcatDataset',
+        shuffle=True,
+        datasets=[robosense_train_dataset, robosense_val_train_dataset],
+    )
 )
 
 val_dataloader = dict(
@@ -203,8 +218,7 @@ post_center_range = point_cloud_range
 model = dict(
     type='CenterPoint',
     init_cfg=dict(
-        checkpoint=
-        '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run5_mix_kitti_osdar23_4class_80m/epoch_40.pth',
+        checkpoint='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_run8_mix_kitti_osdar23_4class_80m/epoch_40.pth',
         type='Pretrained'),
     data_preprocessor=dict(
         type='Det3DDataPreprocessor',
@@ -353,4 +367,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_mixed_finetune_robosense_4class_80m'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_cp_mixed_finetune_robosense_4class_80m_v3'
