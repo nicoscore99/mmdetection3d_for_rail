@@ -91,6 +91,7 @@ class Det3DDataset(BaseDataset):
 
         # Defaults to False if not specify
         for key in _default_modality_keys:
+            
             if key not in modality:
                 modality[key] = False
         self.modality = modality

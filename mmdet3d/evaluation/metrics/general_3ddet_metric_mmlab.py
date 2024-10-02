@@ -167,6 +167,12 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         gt_annos = self.convert_gt_from_results(results)
         dt_annos = self.convert_dt_from_results(results)
         
+        key_intersection = set(gt_annos.keys()) & set(dt_annos.keys())
+        
+        # Only keep the keys that are in both gt_annos and dt_annos
+        gt_annos = {key: gt_annos[key] for key in key_intersection}
+        dt_annos = {key: dt_annos[key] for key in key_intersection}
+        
         # print("Debug: gt_annos: ", gt_annos)
         # print("Debug: dt_annos: ", dt_annos)
         # Assert that the keys of the gt_annos and dt_annos are the same
@@ -331,13 +337,17 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                 sample_idx = data_sample['lidar_path']
                 dt_bboxes = InstanceData()
 
-                if not isinstance(data_sample['pred_instances_3d']['labels_3d'], torch.Tensor):
-                    data_sample['pred_instances_3d']['labels_3d'] = torch.from_numpy(data_sample['pred_instances_3d']['labels_3d'])
+                try:
+                    if not isinstance(data_sample['pred_instances_3d']['labels_3d'], torch.Tensor):
+                        data_sample['pred_instances_3d']['labels_3d'] = torch.from_numpy(data_sample['pred_instances_3d']['labels_3d'])
 
-                dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d'].tensor.to('cpu')
-                dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d'].to('cpu')
-                dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d'].to('cpu')
-                dt_dict[sample_idx] = dt_bboxes
+                    dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d'].tensor.to('cpu')
+                    dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d'].to('cpu')
+                    dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d'].to('cpu')
+                    dt_dict[sample_idx] = dt_bboxes
+                except Exception as e:
+                    print("Error: ", e)
+                    print("The following sample has no predictions: ", sample_idx)
 
         return dt_dict
     
