@@ -209,13 +209,28 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
             'Bus'
         ]
         
+        # self.class_name_mapping = {
+        #     'Pedestrian': ['Pedestrian', 'Person (sitting)', 'Wheelchair'],
+        #     'Car': ['Car', 'Van'],
+        #     'Truck': ['Truck', 'Bus'],
+        #     'Train': ['Train', 'Tram'],
+        #     'Cyclist': ['Bike', 'Motorcycle'],
+        #     'Unknown': ['Unknown', 'Animal']
+        # }
+        
+        # self.class_name_mapping = {
+        #     'Pedestrian': ['Pedestrian', 'Person (sitting)', 'Wheelchair'],
+        #     'Cyclist': ['Bike', 'Motorcycle'],
+        #     'RoadVehicle': ['Car', 'Van', 'Truck', 'Bus'],
+        #     'Train': ['Train', 'Tram'],
+        #     'Unknown': ['Unknown', 'Animal']
+        # }
+        
         self.class_name_mapping = {
             'Pedestrian': ['Pedestrian', 'Person (sitting)', 'Wheelchair'],
-            'Car': ['Car', 'Van'],
-            'Truck': ['Truck', 'Bus'],
-            'Train': ['Train', 'Tram'],
             'Cyclist': ['Bike', 'Motorcycle'],
-            'Unknown': ['Unknown', 'Animal']
+            'Car': ['Car', 'Van'],
+            'Unknown': ['Unknown', 'Animal', 'Truck', 'Bus', 'Train', 'Tram']
         }
         
         self.lidar_dir = osp.join(self.save_dir, 'points')
