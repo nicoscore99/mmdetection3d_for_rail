@@ -209,13 +209,20 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
             'Bus'
         ]
         
+        # self.class_name_mapping = {
+        #     'Pedestrian': ['Pedestrian', 'Person (sitting)', 'Wheelchair'],
+        #     'Car': ['Car', 'Van'],
+        #     'Truck': ['Truck', 'Bus'],
+        #     'Train': ['Train', 'Tram'],
+        #     'Cyclist': ['Bike', 'Motorcycle'],
+        #     'Unknown': ['Unknown', 'Animal']
+        # }
+        
         self.class_name_mapping = {
             'Pedestrian': ['Pedestrian', 'Person (sitting)', 'Wheelchair'],
-            'Car': ['Car', 'Van'],
-            'Truck': ['Truck', 'Bus'],
-            'Train': ['Train', 'Tram'],
             'Cyclist': ['Bike', 'Motorcycle'],
-            'Unknown': ['Unknown', 'Animal']
+            'RoadVehicle': ['Car', 'Van', 'Truck', 'Bus'],
+            'Train': ['Train', 'Tram'],
         }
         
         self.lidar_dir = osp.join(self.save_dir, 'points')
@@ -290,7 +297,8 @@ class ROBOSENSE_M1_PLUS_SEQUENCES_KITTI_CASTOR(object):
         
         for frame_name, annotations in zip(frame_names, frame_annotations):
             if len(annotations) == 0:
-                raise ValueError(f'No annotations found for frame {frame_name}')
+                # raise ValueError(f'No annotations found for frame {frame_name}')
+                print(f'No annotations found for frame {frame_name}')
     
     def get_labeled_samples(self, data):
             
