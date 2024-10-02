@@ -233,8 +233,9 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             self.save_plot(plot=self.evaluator.options_frame_plots(method='confusion_matrix_plot', iou_level=0.3), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
             
         if self.save_tp_positioning:
-            self.evaluator.save_dt_positioning(output_dir=self.output_dir, iou_level=0.3)
-            self.evaluator.save_gt_positioning(output_dir=self.output_dir, iou_level=0.3)
+            # self.evaluator.save_dt_positioning(output_dir=self.output_dir, iou_level=0.3)
+            # self.evaluator.save_gt_positioning(output_dir=self.output_dir, iou_level=0.3)
+            self.evaluator.save_all_results(output_dir=self.output_dir, iou_level=0.3)
 
         ####### Saving the evaluation results #######
 
@@ -930,6 +931,98 @@ class EvaluatorMetrics():
         method: str,
         iou_level: float):
         return self.curves_method[method](iou_level)
+    
+    def save_all_results(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        results_dict_np = {k: v.cpu().numpy() for k, v in results_dict.items()}
+ 
+        # Part relevant for the detections
+        
+        dt_frame_names = []
+        
+        x = []
+        y = []
+        z = []
+        l = []
+        w = []
+        h = []
+        theta = []
+                
+        for key in self._dt_annos_valid.keys():
+            dt_instance = self._dt_annos_valid[key]
+            x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
+            y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
+            z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
+            l.append(dt_instance.bboxes_3d[:, 3].cpu().numpy())
+            w.append(dt_instance.bboxes_3d[:, 4].cpu().numpy())
+            h.append(dt_instance.bboxes_3d[:, 5].cpu().numpy())
+            theta.append(dt_instance.bboxes_3d[:, 6].cpu().numpy())
+            dt_frame_names += [key] * len(dt_instance.bboxes_3d)
+            
+        x = np.concatenate(x)
+        y = np.concatenate(y)
+        z = np.concatenate(z)
+        l = np.concatenate(l)
+        w = np.concatenate(w)
+        h = np.concatenate(h)
+        theta = np.concatenate(theta)
+        
+        dt_labels = results_dict_np['dt_labels']
+        dt_scores = results_dict_np['dt_scores']
+        dt_assigned_gt_indices = results_dict_np['dt_assigned_gt_indices']
+        dt_max_overlaps = results_dict_np['dt_max_overlaps']
+        dt_assigned_labels = results_dict_np['dt_assigned_labels']
+        tp_binary_easy = self.tp_detection(filtered_dict=results_dict)
+        tp_binary_hard = self.tp_detection_and_label(filtered_dict=results_dict)
+                
+        assert len(dt_frame_names) == len(dt_labels) == len(dt_scores) == len(dt_assigned_gt_indices) == len(dt_max_overlaps) == len(dt_assigned_labels) == len(tp_binary_easy) == len(tp_binary_hard)
+        
+        # # save in a csv file
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'l': l, 'w': w, 'h': h, 'theta': theta, 'dt_labels': dt_labels, 'dt_scores': dt_scores, 'dt_assigned_gt_indices': dt_assigned_gt_indices, 'dt_max_overlaps': dt_max_overlaps, 'dt_assigned_labels': dt_assigned_labels, 'tp_binary_easy': tp_binary_easy, 'tp_binary_hard': tp_binary_hard, 'dt_frame_names': dt_frame_names})
+        df.to_csv(osp.join(output_dir, f'dt_results_{iou_level}.csv'), index=False)
+
+        # Part relevant for the ground truth instances
+        gt_frame_names = []
+        gt_labels = results_dict_np['gt_labels']
+        gt_assigned_or_not_binary = results_dict_np['gt_assigned_or_not_binary']
+
+        x = []
+        y = []
+        z = []
+        l = []
+        w = []
+        h = []
+        theta = []
+        
+        for key in self._gt_annos_valid.keys():
+            gt_instance = self._gt_annos_valid[key]
+            x.append(gt_instance.bboxes_3d[:, 0].cpu().numpy())
+            y.append(gt_instance.bboxes_3d[:, 1].cpu().numpy())
+            z.append(gt_instance.bboxes_3d[:, 2].cpu().numpy())
+            l.append(gt_instance.bboxes_3d[:, 3].cpu().numpy())
+            w.append(gt_instance.bboxes_3d[:, 4].cpu().numpy())
+            h.append(gt_instance.bboxes_3d[:, 5].cpu().numpy())
+            theta.append(gt_instance.bboxes_3d[:, 6].cpu().numpy())
+            gt_frame_names += [key] * len(gt_instance.bboxes_3d)
+            
+        x = np.concatenate(x)
+        y = np.concatenate(y)
+        z = np.concatenate(z)
+        l = np.concatenate(l)
+        w = np.concatenate(w)
+        h = np.concatenate(h)
+        theta = np.concatenate(theta)
+        
+        assert len(gt_frame_names) == len(gt_labels) == len(gt_assigned_or_not_binary)
+        
+        # save in a csv file
+        df_gt = pd.DataFrame({'x': x, 'y': y, 'z': z, 'l': l, 'w': w, 'h': h, 'theta': theta, 'gt_labels': gt_labels, 'gt_assigned_or_not_binary': gt_assigned_or_not_binary, 'gt_frame_names': gt_frame_names})
+        df_gt.to_csv(osp.join(output_dir, f'gt_results_{iou_level}.csv'), index=False)
     
     def save_dt_positioning(self, output_dir: str, iou_level: float):
         
