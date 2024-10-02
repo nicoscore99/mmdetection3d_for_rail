@@ -27,23 +27,25 @@ from mmdet3d.structures import points_cam2img
 from mmdet3d.datasets.osdar23_dataset import OSDaR23Dataset
 
 
-# kategory_mapping = {
-#     'Pedestrian': ['Pedestrian'],
-#     'Cyclist': ['Cyclist'],
-#     'RoadVehicle': ['Car', 'Van', 'Truck'],
-#     'Train': ['Train', 'Tram'],
-#     'Unknown': ['DontCare', 'Unknown'],
-# }
-
 kategory_mapping = {
     'Pedestrian': ['Pedestrian'],
     'Cyclist': ['Cyclist'],
-    'Car': ['Car', 'Van', 'Truck'],
-    # 'Train': ['Train'],
+    'RoadVehicle': ['Car', 'Van', 'Truck', 'RoadVehicle'],
+    'Train': ['Train', 'Tram', 'Train'],
     'Unknown': ['DontCare', 'Unknown'],
 }
+kategories_wanted = ['Pedestrian', 'Cyclist', 'RoadVehicle', 'Train']
 
-kitti_categories_wanted = ['Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck', 'Tram', 'Train']
+# kategory_mapping = {
+#     'Pedestrian': ['Pedestrian'],
+#     'Cyclist': ['Cyclist'],
+#     'Car': ['Car', 'Van', 'Truck'],
+#     # 'Train': ['Train'],
+#     'Unknown': ['DontCare', 'Unknown'],
+# }
+
+# kitti_categories_wanted = ['Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck', 'Tram', 'Train']
+
 
 def map_category_to_kitti(category):
     for key, value in kategory_mapping.items():
@@ -491,7 +493,8 @@ def update_kitti_infos(pkl_path, out_dir):
                 
                 # ann_name = map_category_to_kitti(anns['name'][instance_id])
 
-                if anns['name'][instance_id] in kitti_categories_wanted:
+                # if anns['name'][instance_id] in kitti_categories_wanted:
+                if anns['name'][instance_id] in METAINFO['classes']:
                     # empty_instance['bbox_label'] = METAINFO['classes'].index(
                     #     anns['name'][instance_id])
                     ann_name = map_category_to_kitti(anns['name'][instance_id])
@@ -577,14 +580,14 @@ def update_osdar23_infos(pkl_path, out_dir):
     #     'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
     # }
     
-    # METAINFO = {
-    #     'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train', 'Unknown'),
-    # }
-
     METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'Car', 'Unknown'),
-        'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (80, 80, 80)]
+        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train', 'Unknown'),
     }
+
+    # METAINFO = {
+    #     'classes': ('Pedestrian', 'Cyclist', 'Car', 'Unknown'),
+    #     'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (80, 80, 80)]
+    # }
 
     # METAINFO = {
     #     'classes': ('pedestrian', 'car'),
@@ -665,7 +668,7 @@ def update_osdar23_infos(pkl_path, out_dir):
                 
                 
                 # ann_name = map_category_to_kitti(anns['name'][instance_id])
-                if anns['name'][instance_id] in kitti_categories_wanted:
+                if anns['name'][instance_id] in kategories_wanted:
                     # empty_instance['bbox_label'] = METAINFO['classes'].index(
                     #     anns['name'][instance_id])
                     ann_name = map_category_to_kitti(anns['name'][instance_id])
