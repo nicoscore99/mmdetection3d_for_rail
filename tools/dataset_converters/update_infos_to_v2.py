@@ -27,11 +27,19 @@ from mmdet3d.structures import points_cam2img
 from mmdet3d.datasets.osdar23_dataset import OSDaR23Dataset
 
 
+# kategory_mapping = {
+#     'Pedestrian': ['Pedestrian'],
+#     'Cyclist': ['Cyclist'],
+#     'RoadVehicle': ['Car', 'Van', 'Truck'],
+#     'Train': ['Train', 'Tram'],
+#     'Unknown': ['DontCare', 'Unknown'],
+# }
+
 kategory_mapping = {
     'Pedestrian': ['Pedestrian'],
     'Cyclist': ['Cyclist'],
-    'RoadVehicle': ['Car', 'Van', 'Truck'],
-    'Train': ['Train', 'Tram'],
+    'Car': ['Car', 'Van', 'Truck'],
+    # 'Train': ['Train'],
     'Unknown': ['DontCare', 'Unknown'],
 }
 
@@ -569,10 +577,15 @@ def update_osdar23_infos(pkl_path, out_dir):
     #     'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
     # }
     
+    # METAINFO = {
+    #     'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train', 'Unknown'),
+    # }
+
     METAINFO = {
-        'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train', 'Unknown'),
+        'classes': ('Pedestrian', 'Cyclist', 'Car', 'Unknown'),
+        'palette': [(106, 0, 228), (165, 42, 42), (119, 11, 32), (80, 80, 80)]
     }
-    
+
     # METAINFO = {
     #     'classes': ('pedestrian', 'car'),
     # }
