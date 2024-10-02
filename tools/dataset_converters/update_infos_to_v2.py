@@ -713,14 +713,14 @@ def update_osdar23_infos(pkl_path, out_dir):
     pkl_name = Path(pkl_path).name
     out_path = osp.join(out_dir, pkl_name)
     print(f'Writing to output file: {out_path}.')
-    print(f'ignore classes: {ignore_class_name}')
+    # print(f'ignore classes: {ignore_class_name}')
 
     # dataset metainfo
     metainfo = dict()
     metainfo['categories'] = {k: i for i, k in enumerate(METAINFO['classes'])}
-    if ignore_class_name:
-        for ignore_class in ignore_class_name:
-            metainfo['categories'][ignore_class] = -1
+    # if ignore_class_name:
+    #     for ignore_class in ignore_class_name:
+    #         metainfo['categories'][ignore_class] = -1
     metainfo['dataset'] = 'kitti'
     metainfo['info_version'] = '1.1'
     converted_data_info = dict(metainfo=metainfo, data_list=converted_list)
