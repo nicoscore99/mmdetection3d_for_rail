@@ -80,7 +80,7 @@ def osdar_data_prep(root_path,
     info_trainval_path = osp.join(out_dir, f'{info_prefix}_infos_trainval.pkl')
     info_test_path = osp.join(out_dir, f'{info_prefix}_infos_test.pkl')
     update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_train_path)
-    update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_val_path)
+    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_val_path)
     update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_trainval_path)
     update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_test_path)
     create_groundtruth_database(
@@ -117,18 +117,18 @@ def robosense_data_prep(root_path,
     info_val_path = osp.join(out_dir, f'{info_prefix}_infos_val.pkl')
     info_trainval_path = osp.join(out_dir, f'{info_prefix}_infos_trainval.pkl')
     info_test_path = osp.join(out_dir, f'{info_prefix}_infos_test.pkl')
-    update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_train_path)
+    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_train_path)
     update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_val_path)
     update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_trainval_path)
-    update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_test_path)
-    create_groundtruth_database(
-        'ROBOSENSE_M1_PLUS',
-        root_path,
-        info_prefix,
-        f'{info_prefix}_infos_train.pkl',
-        relative_path=False,
-        mask_anno_path='instances_train.json',
-        with_mask=(version == 'mask'))
+    # update_pkl_infos('osdar23', out_dir=out_dir, pkl_path=info_test_path)
+    # create_groundtruth_database(
+    #     'ROBOSENSE_M1_PLUS',
+    #     root_path,
+    #     info_prefix,
+    #     f'{info_prefix}_infos_train.pkl',
+    #     relative_path=False,
+    #     mask_anno_path='instances_train.json',
+    #     with_mask=(version == 'mask'))
 
 def nuscenes_data_prep(root_path,
                        info_prefix,
