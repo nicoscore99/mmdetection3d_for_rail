@@ -281,7 +281,9 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
             # If 'gt_labels_3d' is not a tensor, convert it to a tensor
             if not isinstance(data_sample.eval_ann_info['gt_labels_3d'], torch.Tensor):
                 data_sample.eval_ann_info['gt_labels_3d'] = torch.from_numpy(data_sample.eval_ann_info['gt_labels_3d'])
-            
+
+            bbox_3d = data_sample.eval_ann_info['gt_bboxes_3d'].tensor.to('cpu')
+            bbox_3d[:, 2] = bbox_3d[:, 2] + bbox_3d[:, 5] / 2            
             gt_bboxes.bboxes_3d = data_sample.eval_ann_info['gt_bboxes_3d'].tensor.to('cpu')
             gt_bboxes.labels_3d = data_sample.eval_ann_info['gt_labels_3d'].to('cpu')
             gt_dict[sample_idx] = gt_bboxes
@@ -325,6 +327,16 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
                         (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
                         (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
             
+            # # print which annotations were filtered
+            # if sum(valid_inds) != len(valid_inds):
+            #     print("The following annotations were filtered: ", key)
+            #     print("The following indices were filtered: ", valid_inds)
+            #     bbox_3d_center_filtered = bbox_3d_center[~valid_inds]
+            #     print("The following centers were filtered: ", bbox_3d_center_filtered)
+            #     bbox_3d_filtered = _bbox_3d[~valid_inds]
+            #     print("The following bboxes were filtered: ", bbox_3d_filtered)
+            #     print("PCD limit range: ", self.pcd_limit_range)
+
             instance_data_valid = InstanceData()
             instance_data_valid.bboxes_3d = annos[key].bboxes_3d[valid_inds]
 
@@ -342,7 +354,9 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
         if num_bbox_before == 0:
             percentage = 0.0
         else:
-            percentage = round((num_bbox_after / num_bbox_before) * 100, 2)            
+            percentage = round((num_bbox_after / num_bbox_before) * 100, 2)      
+
+        # raise ValueError("The number of valid bounding boxes is zero. Please check the filtering process.")      
         return annos_valid, percentage
         
     def convert_bbox_3d_from_classificaton(self, bboxes_3d: list) -> torch.Tensor:
@@ -449,6 +463,13 @@ class General_3dDet_Metric_MMLab_Classification_Version(BaseMetric):
                           (bbox_3d_center[:, 1] <= self.pcd_limit_range[4]) &
                           (bbox_3d_center[:, 2] >= self.pcd_limit_range[2]) &
                           (bbox_3d_center[:, 2] <= self.pcd_limit_range[5]))
+            
+            #     # print which annotations were filtered
+            # if sum(valid_inds) != len(valid_inds):
+            #     print("The following annotations were filtered: ", key)
+            #     print("The following indices were filtered: ", valid_inds)
+            #     bbox_3d_center_filtered = bbox_3d_center[~valid_inds]
+            #     print("The following centers were filtered: ", bbox_3d_center_filtered)
             
             instance_data_valid = InstanceData()
             instance_data_valid.bboxes_3d = annos[key].bboxes_3d[valid_inds]
@@ -1349,57 +1370,71 @@ class EvaluatorMetrics():
         df_gt = pd.DataFrame({'x': x, 'y': y, 'z': z, 'l': l, 'w': w, 'h': h, 'theta': theta, 'gt_labels': gt_labels, 'gt_assigned_or_not_binary': gt_assigned_or_not_binary, 'gt_frame_names': gt_frame_names})
         df_gt.to_csv(osp.join(output_dir, f'gt_results_{iou_level}.csv'), index=False)
         
-    # def save_dt_positioning(self, output_dir: str, iou_level: float):
+    def save_dt_positioning(self, output_dir: str, iou_level: float):
         
-    #     if not iou_level in self.threshold_specific_results_dict.keys():
-    #         self.val_batch_evaluation(iou_level)
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
             
-    #     results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
         
-    #     dt_tp_binary = self.class_accuracy_requirement_map['easy'](filtered_dict=results_dict)
+        dt_tp_binary = self.class_accuracy_requirement_map['easy'](filtered_dict=results_dict)
         
-    #     # from _dt_annos_valid save the position of all detections
+        # from _dt_annos_valid save the position of all detections
         
-    #     _x = []
-    #     _y = []
-    #     _z = []
+        _x = []
+        _y = []
+        _z = []
         
-    #     for key in self._dt_annos_valid.keys():
-    #         dt_instance = self._dt_annos_valid[key]
-    #         _x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
-    #         _y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
-    #         _z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
+        for key in self._dt_annos_valid.keys():
+            dt_instance = self._dt_annos_valid[key]
+            _x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
             
-    #     x = np.concatenate(_x)
-    #     y = np.concatenate(_y)
-    #     z = np.concatenate(_z)
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
         
-    #     df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'tp': dt_tp_binary.cpu().numpy()})
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'tp': dt_tp_binary.cpu().numpy()})
         
-    #     df.to_csv(osp.join(output_dir, 'dt_positioning.csv'), index=False)
+        df.to_csv(osp.join(output_dir, 'dt_positioning.csv'), index=False)
         
-    # def save_gt_positioning(self, output_dir: str, iou_level: float):
+    def save_gt_positioning(self, output_dir: str, iou_level: float):
         
-    #     if not iou_level in self.threshold_specific_results_dict.keys():
-    #         self.val_batch_evaluation(iou_level)
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
             
-    #     results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
         
-    #     gt_assigned_or_not_binary = results_dict['gt_assigned_or_not_binary']
+        gt_assigned_or_not_binary = results_dict['gt_assigned_or_not_binary']
         
-    #     bbox_3d = []
+        bbox_3d = []
         
-    #     for key in self._gt_annos_valid.keys():
-    #         gt_instance = self._gt_annos_valid[key]
-    #         bbox_3d.append(gt_instance.bboxes_3d.cpu().numpy())
+        for key in self._gt_annos_valid.keys():
+            gt_instance = self._gt_annos_valid[key]
+            bbox_3d.append(gt_instance.bboxes_3d.cpu().numpy())
             
-    #     bbox_3d = np.concatenate(bbox_3d)
+        bbox_3d = np.concatenate(bbox_3d)
+                
+        _x = []
+        _y = []
+        _z = []
         
-    #     bbox_3d_labels = ['x', 'y', 'z', 'l', 'w', 'h', 'theta']
+        for key in self._gt_annos_valid.keys():
+            dt_instance = self._dt_annos_valid[key]
+            _x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
+            
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
         
-    #     # df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'assigned': gt_assigned_or_not_binary.cpu().numpy()})
+        bbox_3d_labels = ['x', 'y', 'z', 'l', 'w', 'h', 'theta']
         
-    #     df.to_csv(osp.join(output_dir, 'gt_positioning.csv'), index=False)
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'assigned': gt_assigned_or_not_binary.cpu().numpy()})
+        
+        df.to_csv(osp.join(output_dir, 'gt_positioning.csv'), index=False)
         
     
     
