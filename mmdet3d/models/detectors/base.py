@@ -147,6 +147,9 @@ class Base3DDetector(BaseDetector):
             ]
 
         for i, data_sample in enumerate(data_samples):
-            data_sample.pred_instances_3d = data_instances_3d[i]
-            data_sample.pred_instances = data_instances_2d[i]
+            try:
+                data_sample.pred_instances_3d = data_instances_3d[i]
+                data_sample.pred_instances = data_instances_2d[i]
+            except Exception as e:
+                print('data_sample:', data_sample)
         return data_samples

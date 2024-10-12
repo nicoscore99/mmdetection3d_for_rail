@@ -1,29 +1,29 @@
 custom_imports = dict(imports=['mmdet3d.datasets.osdar23_dataset',
-                               'mmdet3d.datasets.kitti_dataset',
                                'mmdet3d.engine.hooks.wandb_logger_hook',
                                'mmdet3d.evaluation.metrics.general_3ddet_metric_mmlab'], allow_failed_imports=False)                
 
-kitti_dataset = dict(type='KittiDataset')
 osdar23_dataset = dict(type='OSDaR23Dataset')
 
 ############# Additional Hooks #############
 
-# custom_hooks = [
-#     dict(type='WandbLoggerHook', 
-#          save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run6_mixed_4class',
-#          yaml_config_path='wandb_auth.yaml',
-#          log_artifact=True,
-#          init_kwargs={
-#              'entity': 'railsensing',
-#              'project': 'pv-rcnn',
-#              'name': 'rtx4090_pvrcnn_run6_mixed_4class',
-#              })
-# ]
+custom_hooks = [
+    dict(type='WandbLoggerHook', 
+         save_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run8_mixed_3class',
+         yaml_config_path='wandb_auth.yaml',
+         log_artifact=True,
+         init_kwargs={
+             'entity': 'railsensing',
+             'project': 'pv-rcnn',
+             'name': 'rtx4090_pvrcnn_run8_mixed_3class',
+             })
+]
 
 ############# Generic variables #############
 
-class_names = ['Pedestrian', 'Cyclist', 'RoadVehicle', 'Train']
-point_cloud_range =  [0.0, -40.0, -3, 80.0, 40.0, 1]
+# class_names = ['Pedestrian', 'Cyclist', 'RoadVehicle', 'Train']
+class_names = ['Pedestrian', 'Cyclist', 'Car']
+# point_cloud_range =  [0.0, -40.0, -3, 80.0, 40.0, 1]
+point_cloud_range = [0, -40, -3, 70.4, 40, 1]
 input_modality = dict(use_lidar=True, use_camera=False)
 point_cloud_range_inference = point_cloud_range
 metainfo = dict(classes=class_names)
@@ -87,79 +87,9 @@ generic_eval_pipeline = [
     dict(type='Pack3DDetInputs', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 
-############# OSDAR23 Specific Config #############
-
-osdar23_data_root = 'data/osdar23_cls/'
-osdar23_dataset_type = 'OSDaR23Dataset'
-
-osdar23_db_sampler = dict(
-    data_root=osdar23_data_root,
-    info_path=osdar23_data_root + 'kitti_dbinfos_train.pkl',
-    rate=1.0,
-    prepare=dict(
-        filter_by_min_points=dict(Pedestrian=20, Cyclist=20, RoadVehicle=20, Train=20)
-    ), 
-    classes=class_names,
-    sample_groups=dict(Pedestrian=10, Cyclist=10, RoadVehicle=10, Train=10),
-    points_loader=points_loader,
-    backend_args=None)
-
-osdar23_train_pipeline = [
-    points_loader,
-    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
-    dict(type='ObjectSample', db_sampler=osdar23_db_sampler, use_ground_plane=False),
-    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
-    dict(
-        type='GlobalRotScaleTrans',
-        rot_range=[-0.78539816, 0.78539816],
-        scale_ratio_range=[0.95, 1.05]),
-    dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
-    dict(type='PointShuffle'),
-    dict(
-        type='Pack3DDetInputs',
-        keys=['points', 'gt_labels_3d', 'gt_bboxes_3d'])
-]
-
-osdar23_train_dataset = dict(
-    type=osdar23_dataset_type,
-    # indices=3,
-    data_root=osdar23_data_root,
-    ann_file='kitti_infos_train.pkl',
-    data_prefix=dict(pts='points'),
-    pipeline=osdar23_train_pipeline,
-    modality=input_modality,
-    test_mode=False,
-    metainfo=metainfo,
-    backend_args=None)
-
-repeat_osdar23_train_dataset = dict(
-    type='RepeatDataset',
-    times=2,
-    dataset=osdar23_train_dataset)
-
-class_balanced_osdar23_train_dataset = dict(
-    type='ClassBalancedDataset',
-    dataset=osdar23_train_dataset,
-    oversample_thr=0.1
-)
-
-osdar23_val_dataset = dict(
-    type=osdar23_dataset_type,
-    # indices=2,
-    data_root=osdar23_data_root,
-    ann_file='kitti_infos_val.pkl',
-    data_prefix=dict(pts='points'),
-    pipeline=generic_eval_pipeline,
-    modality=input_modality,
-    test_mode=True,
-    metainfo=metainfo,
-    backend_args=None)
-
 ############# Kitti Specific Config #############
 
-kitti_data_root = 'data/kitti_cls/'
-kitti_data_root = 'data/kitti_cls/'
+kitti_data_root = 'data/kitti/'
 kitti_dataset_type = 'KittiDataset'
 
 kitti_db_sampler = dict(
@@ -168,10 +98,12 @@ kitti_db_sampler = dict(
     rate=1.0,
     prepare=dict(
         filter_by_difficulty=[-1],
-        filter_by_min_points=dict(Pedestrian=20, Cyclist=20, RoadVehicle=20, Train=20)
+        # filter_by_min_points=dict(Pedestrian=20, Cyclist=20, RoadVehicle=20, Train=20)
+        filter_by_min_points=dict(Pedestrian=20, Cyclist=20, Car=20)
     ),
     classes=class_names,
-    sample_groups=dict(Pedestrian=10, Cyclist=10, RoadVehicle=10, Train=10),
+    # sample_groups=dict(Pedestrian=10, Cyclist=10, RoadVehicle=10, Train=10),
+    sample_groups=dict(Pedestrian=10, Cyclist=10, Car=10),
     points_loader=points_loader,
     backend_args=None)
     
@@ -229,6 +161,77 @@ kitti_repeat_dataset = dict(
     times=1,
     dataset=kitti_train_dataset)
 
+############# OSDAR23 Specific Config #############
+
+osdar23_data_root = 'data/osdar23_3class/'
+osdar23_dataset_type = 'OSDaR23Dataset'
+
+osdar23_db_sampler = dict(
+    data_root=osdar23_data_root,
+    info_path=osdar23_data_root + 'kitti_dbinfos_train.pkl',
+    rate=1.0,
+    prepare=dict(
+        # filter_by_min_points=dict(Pedestrian=20, Cyclist=20, RoadVehicle=20, Train=20)
+        filter_by_min_points=dict(Pedestrian=20, Cyclist=20, Car=20)
+    ), 
+    classes=class_names,
+    # sample_groups=dict(Pedestrian=10, Cyclist=10, RoadVehicle=10, Train=10),
+    sample_groups=dict(Pedestrian=10, Cyclist=10, Car=10),
+    points_loader=points_loader,
+    backend_args=None)
+
+osdar23_train_pipeline = [
+    points_loader,
+    dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(type='ObjectSample', db_sampler=osdar23_db_sampler, use_ground_plane=False),
+    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
+    dict(
+        type='GlobalRotScaleTrans',
+        rot_range=[-0.78539816, 0.78539816],
+        scale_ratio_range=[0.95, 1.05]),
+    dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
+    dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
+    dict(type='PointShuffle'),
+    dict(
+        type='Pack3DDetInputs',
+        keys=['points', 'gt_labels_3d', 'gt_bboxes_3d'])
+]
+
+osdar23_train_dataset = dict(
+    type=osdar23_dataset_type,
+    # indices=3,
+    data_root=osdar23_data_root,
+    ann_file='kitti_infos_train.pkl',
+    data_prefix=dict(pts='points'),
+    pipeline=osdar23_train_pipeline,
+    modality=input_modality,
+    test_mode=False,
+    metainfo=metainfo,
+    backend_args=None)
+
+repeat_osdar23_train_dataset = dict(
+    type='RepeatDataset',
+    times=2,
+    dataset=osdar23_train_dataset)
+
+class_balanced_osdar23_train_dataset = dict(
+    type='ClassBalancedDataset',
+    dataset=osdar23_train_dataset,
+    oversample_thr=0.1
+)
+
+osdar23_val_dataset = dict(
+    type=osdar23_dataset_type,
+    # indices=2,
+    data_root=osdar23_data_root,
+    ann_file='kitti_infos_val.pkl',
+    data_prefix=dict(pts='points'),
+    pipeline=generic_eval_pipeline,
+    modality=input_modality,
+    test_mode=True,
+    metainfo=metainfo,
+    backend_args=None)
+
 ############# Dataloader Config #############
 
 train_dataloader = dict(
@@ -238,7 +241,8 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[class_balanced_osdar23_train_dataset]
+        shuffle=True,
+        datasets=[class_balanced_osdar23_train_dataset, kitti_train_dataset]
     )
 )
 
@@ -250,7 +254,8 @@ val_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type='ConcatDataset',
-        datasets=[osdar23_val_dataset]
+        shuffle=True,
+        datasets=[osdar23_val_dataset, kitti_val_dataset]
     )
 )
 
@@ -262,7 +267,7 @@ val_evaluator = dict(
     metric='det3d',
     classes=class_names,
     pcd_limit_range=point_cloud_range_inference,
-    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run6_mixed_4class/evaluation',
+    output_dir='/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run8_mixed_3class',
     save_graphics = False,
     save_evaluation_results = True,
     save_random_viz = False,
@@ -278,10 +283,13 @@ visualizer = dict(
 ############# Model Config #############
 
 voxel_size = [0.05, 0.05, 0.1]
-kitti_object_sizes = [[0.84, 0.63, 1.79], [1.73, 0.57, 1.73], [3.96, 1.64, 1.52], [14.66, 2.34, 3.61]]
-osdar_object_sizes = [[0.8, 0.8, 1.9], [1.9, 1.0, 1.2], [3.3, 2.4, 1.6], [63.6, 4.1, 4.2]]
-robosense_object_sizes = [[0.71, 0.73, 1.81], [2.03, 0.83, 1.97], [4.29, 2.19, 1.77], [25.62, 3.16, 3.86]]
-size_compromise = [[0.82 , 0.715, 1.845], [1.815, 0.785, 1.465], [3.63, 2.02, 1.56], [39.13 ,  3.22 ,  3.905]]
+# kitti_object_sizes = [[0.84, 0.63, 1.79], [1.73, 0.57, 1.73], [3.96, 1.64, 1.52], [14.66, 2.34, 3.61]]
+# osdar_object_sizes = [[0.8, 0.8, 1.9], [1.9, 1.0, 1.2], [3.3, 2.4, 1.6], [63.6, 4.1, 4.2]]
+# robosense_object_sizes = [[0.71, 0.73, 1.81], [2.03, 0.83, 1.97], [4.29, 2.19, 1.77], [25.62, 3.16, 3.86]]
+# size_compromise = [[0.82 , 0.715, 1.845], [1.815, 0.785, 1.465], [3.63, 2.02, 1.56], [39.13 ,  3.22 ,  3.905]]
+
+# osdar_object_sizes = [[0.89, 0.86, 1.89], [1.72, 0.89, 1.27], [4.3, 3.07, 2.79]]
+size_compromise = [[0.85, 0.73, 1.81], [1.74, 0.74, 1.45], [4.1, 2.25, 2.1]]
 
 # Model Config
 model = dict(
@@ -290,7 +298,7 @@ model = dict(
         type='Det3DDataPreprocessor',
         voxel=True,
         voxel_layer=dict(
-            max_num_points=10,  # max_points_per_voxel
+            max_num_points=20,  # max_points_per_voxel
             point_cloud_range=point_cloud_range,
             voxel_size=voxel_size,
             max_voxels=(16000, 40000))),
@@ -367,19 +375,16 @@ model = dict(
     rpn_head=dict(
         type='PartA2RPNHead',
         num_classes=4,
-        num_classes=4,
         in_channels=512,
         feat_channels=512,
         use_direction_classifier=True,
         dir_offset=0.78539,
         anchor_generator=dict(
             type='Anchor3DRangeGenerator',
-            ranges=[[0, -40.0, -0.6, 80.0, 40.0, -0.6],
-                    [0, -40.0, -0.6, 80.0, 40.0, -0.6],
-                    [0, -40.0, -1.78, 80.0, 40.0, -1.78],
-                    [0, -40.0, -1.78, 80.0, 40.0, -1.78]],
-                    # [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
-            sizes=osdar_object_sizes,
+            ranges=[[0, -40.0, -0.6, 70.4, 40.0, -0.6],
+                    [0, -40.0, -0.6, 70.4, 40.0, -0.6],
+                    [0, -40.0, -1.78, 70.4, 40.0, -1.78]],
+            sizes=size_compromise,
             rotations=[0, 1.57],
             reshape_out=False),
         diff_rad_by_sin=True,
@@ -399,7 +404,6 @@ model = dict(
             loss_weight=0.2)),
     roi_head=dict(
         type='PVRCNNRoiHead',
-        num_classes=4,
         num_classes=4,
         semantic_head=dict(
             type='ForegroundSegmentationHead',
@@ -428,7 +432,6 @@ model = dict(
             type='PVRCNNBBoxHead',
             in_channels=128,
             grid_size=6,
-            num_classes=4,
             num_classes=4,
             class_agnostic=True,
             shared_fc_channels=(256, 256),
@@ -465,21 +468,7 @@ model = dict(
                 neg_iou_thr=0.35,
                 min_pos_iou=0.35,
                 ignore_iof_thr=-1),
-            # dict(  # for Train
-            #     type='Max3DIoUAssigner',
-            #     iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
-            #     pos_iou_thr=0.6,
-            #     neg_iou_thr=0.45,
-            #     min_pos_iou=0.45,
-            #     ignore_iof_thr=-1),
             dict(  # for RV
-                type='Max3DIoUAssigner',
-                iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
-                pos_iou_thr=0.5,
-                neg_iou_thr=0.35,
-                min_pos_iou=0.35,
-                ignore_iof_thr=-1),
-            dict(  # for Train
                 type='Max3DIoUAssigner',
                 iou_calculator=dict(type='mmdet3d.BboxOverlapsNearest3D'),
                 pos_iou_thr=0.5,
@@ -530,14 +519,14 @@ model = dict(
                     neg_iou_thr=0.55,
                     min_pos_iou=0.55,
                     ignore_iof_thr=-1),
-                dict(  # for Train
-                    type='Max3DIoUAssigner',
-                    iou_calculator=dict(
-                    type='BboxOverlaps3D', coordinate='lidar'),
-                    pos_iou_thr=0.55,
-                    neg_iou_thr=0.55,
-                    min_pos_iou=0.55,
-                    ignore_iof_thr=-1),
+                # dict(  # for Train
+                #     type='Max3DIoUAssigner',
+                #     iou_calculator=dict(
+                #     type='BboxOverlaps3D', coordinate='lidar'),
+                #     pos_iou_thr=0.55,
+                #     neg_iou_thr=0.55,
+                #     min_pos_iou=0.55,
+                #     ignore_iof_thr=-1),
             ],
             sampler=dict(
                 type='IoUNegPiecewiseSampler',
@@ -573,7 +562,7 @@ optim_wrapper = dict(
     optimizer=dict(type='AdamW', lr=lr, betas=(0.95, 0.99), weight_decay=0.01),
     clip_grad=dict(max_norm=10, norm_type=2))
 
-epoch_num = 50
+epoch_num = 40
 
 param_scheduler = [
     # learning rate scheduler
@@ -617,7 +606,7 @@ param_scheduler = [
         convert_to_iter_based=True)
 ]
 
-train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=1)
+train_cfg = dict(by_epoch=True, max_epochs=epoch_num, val_interval=5)
 val_cfg = dict()
 test_cfg = dict()
 
@@ -648,4 +637,4 @@ load_from = None
 resume = False
 
 ############# Work Directory #############
-work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run6_mixed_4class'
+work_dir = '/home/cws-ml-lab/mmdetection3d_for_rail/checkpoints/rtx4090_pvrcnn_run8_mixed_3class'

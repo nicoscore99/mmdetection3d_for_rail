@@ -659,6 +659,7 @@ class LoadPointsFromFile(BaseTransform):
         if self.shift_height:
             floor_height = np.percentile(points[:, 2], 0.99)
             height = points[:, 2] - floor_height
+            points[:, 2] = points[:, 2] - floor_height
             points = np.concatenate(
                 [points[:, :3],
                  np.expand_dims(height, 1), points[:, 3:]], 1)

@@ -80,6 +80,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                  evaluation_file_name: Optional[str] = 'evaluation_results.json',
                  backend_args: Optional[dict] = None,
                  save_random_viz: Optional[bool] = False,
+                save_tp_positioning: Optional[bool] = False,
                  random_viz_keys: Optional[int] = None) -> 5:
     
         self.default_prefix = 'General 3D Det metric mmlab'
@@ -101,6 +102,7 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         self.metric = metric
         self.num_random_keys_to_be_visualized = random_viz_keys
         self.save_random_viz = save_random_viz
+        self.save_tp_positioning = save_tp_positioning
 
         if self.format_only:
             assert submission_prefix is not None, 'submission_prefix must be '
@@ -162,6 +164,12 @@ class General_3dDet_Metric_MMLab(BaseMetric):
         gt_annos = self.convert_gt_from_results(results)
         dt_annos = self.convert_dt_from_results(results)
         
+        key_intersection = set(gt_annos.keys()) & set(dt_annos.keys())
+        
+        # Only keep the keys that are in both gt_annos and dt_annos
+        gt_annos = {key: gt_annos[key] for key in key_intersection}
+        dt_annos = {key: dt_annos[key] for key in key_intersection}
+        
         # print("Debug: gt_annos: ", gt_annos)
         # print("Debug: dt_annos: ", dt_annos)
         # Assert that the keys of the gt_annos and dt_annos are the same
@@ -188,27 +196,33 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                                           force_single_assignement=self.force_single_assignement)
 
         # Only perform the evaluation when there is at least 10 gt instances and 10 dt instances
-        if not self.evaluator.total_gt_instances >= 10:
-            print_log("The number of gt instances is less than 10, skip evaluation.")
+        if not self.evaluator.total_gt_instances >= 1:
+            print_log("The number of gt instances is less than 1, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
         
-        if not self.evaluator.total_dt_instances >= 10:
-            print_log("The number of dt instances is less than 10, skip evaluation.")
+        if not self.evaluator.total_dt_instances >= 1:
+            print_log("The number of dt instances is less than 1, skip evaluation.")
             return {'evaluations': evaluation_results_dict, 'curves': curves_dict}
 
         ######## Evaluation ########
         
-        evaluation_results_dict['ap'] = self.evaluator.options_frame_metrics(method='ap', 
-                                                                             iou_level=self.difficulty_levels,
-                                                                             class_accuracy_requirements=['easy'])
+        ad_dict = self.evaluator.options_frame_metrics(method='ap', 
+                                                        iou_level=self.difficulty_levels,
+                                                        class_accuracy_requirements=['easy', 'hard'])
         
-        evaluation_results_dict['precision'] = self.evaluator.options_frame_metrics(method='precision',
-                                                                                    iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements=['easy'])
+        evaluation_results_dict.update(ad_dict)
+        
+        prec_dict = self.evaluator.options_frame_metrics(method='precision',
+                                                        iou_level=self.difficulty_levels,
+                                                        class_accuracy_requirements=['easy', 'hard'])
+        
+        evaluation_results_dict.update(prec_dict)
 
-        evaluation_results_dict['recall'] = self.evaluator.options_frame_metrics(method='recall',
-                                                                                    iou_level=self.difficulty_levels,
-                                                                                    class_accuracy_requirements=['easy'])
+        recall_dict = self.evaluator.options_frame_metrics(method='recall',
+                                                            iou_level=self.difficulty_levels,
+                                                            class_accuracy_requirements=['easy', 'hard'])
+        
+        evaluation_results_dict.update(recall_dict)
 
         curves_dict['prec'] = self.evaluator.options_frame_curves(method='precision_recall_curve', iou_level=0.3)
         curves_dict['roc'] = self.evaluator.options_frame_curves(method='roc_curve', iou_level=0.3)
@@ -220,6 +234,11 @@ class General_3dDet_Metric_MMLab(BaseMetric):
             self.save_plot(plot=self.evaluator.options_frame_plots(method='precision_recall_plot', iou_level=0.3), filename = 'precision_recall_plot_pointpillars_kitti.png')
             self.save_plot(plot=self.evaluator.options_frame_plots(method='roc_plot', iou_level=0.3), filename = 'roc_plot_pointpillars_kitti.png')
             self.save_plot(plot=self.evaluator.options_frame_plots(method='confusion_matrix_plot', iou_level=0.3), filename = 'confusion_matrix_plot_pointpillars_kitti.png')
+            
+        if self.save_tp_positioning:
+            # self.evaluator.save_dt_positioning(output_dir=self.output_dir, iou_level=0.3)
+            # self.evaluator.save_gt_positioning(output_dir=self.output_dir, iou_level=0.3)
+            self.evaluator.save_all_results(output_dir=self.output_dir, iou_level=0.3)
 
         ####### Saving the evaluation results #######
 
@@ -315,13 +334,17 @@ class General_3dDet_Metric_MMLab(BaseMetric):
                 sample_idx = data_sample['lidar_path']
                 dt_bboxes = InstanceData()
 
-                if not isinstance(data_sample['pred_instances_3d']['labels_3d'], torch.Tensor):
-                    data_sample['pred_instances_3d']['labels_3d'] = torch.from_numpy(data_sample['pred_instances_3d']['labels_3d'])
+                try:
+                    if not isinstance(data_sample['pred_instances_3d']['labels_3d'], torch.Tensor):
+                        data_sample['pred_instances_3d']['labels_3d'] = torch.from_numpy(data_sample['pred_instances_3d']['labels_3d'])
 
-                dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d'].tensor.to('cpu')
-                dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d'].to('cpu')
-                dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d'].to('cpu')
-                dt_dict[sample_idx] = dt_bboxes
+                    dt_bboxes.bboxes_3d = data_sample['pred_instances_3d']['bboxes_3d'].tensor.to('cpu')
+                    dt_bboxes.labels_3d = data_sample['pred_instances_3d']['labels_3d'].to('cpu')
+                    dt_bboxes.scores = data_sample['pred_instances_3d']['scores_3d'].to('cpu')
+                    dt_dict[sample_idx] = dt_bboxes
+                except Exception as e:
+                    print("Error: ", e)
+                    print("The following sample has no predictions: ", sample_idx)
 
         return dt_dict
     
@@ -910,12 +933,160 @@ class EvaluatorMetrics():
         method: str,
         iou_level: float):
         return self.plots_method[method](iou_level)
-        
     
     def options_frame_curves(self,
         method: str,
         iou_level: float):
         return self.curves_method[method](iou_level)
+    
+    def save_all_results(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        results_dict_np = {k: v.cpu().numpy() for k, v in results_dict.items()}
+ 
+        # Part relevant for the detections
+        
+        dt_frame_names = []
+        
+        x = []
+        y = []
+        z = []
+        l = []
+        w = []
+        h = []
+        theta = []
+                
+        for key in self._dt_annos_valid.keys():
+            dt_instance = self._dt_annos_valid[key]
+            x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
+            y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
+            z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
+            l.append(dt_instance.bboxes_3d[:, 3].cpu().numpy())
+            w.append(dt_instance.bboxes_3d[:, 4].cpu().numpy())
+            h.append(dt_instance.bboxes_3d[:, 5].cpu().numpy())
+            theta.append(dt_instance.bboxes_3d[:, 6].cpu().numpy())
+            dt_frame_names += [key] * len(dt_instance.bboxes_3d)
+            
+        x = np.concatenate(x)
+        y = np.concatenate(y)
+        z = np.concatenate(z)
+        l = np.concatenate(l)
+        w = np.concatenate(w)
+        h = np.concatenate(h)
+        theta = np.concatenate(theta)
+        
+        dt_labels = results_dict_np['dt_labels']
+        dt_scores = results_dict_np['dt_scores']
+        dt_assigned_gt_indices = results_dict_np['dt_assigned_gt_indices']
+        dt_max_overlaps = results_dict_np['dt_max_overlaps']
+        dt_assigned_labels = results_dict_np['dt_assigned_labels']
+        tp_binary_easy = self.tp_detection(filtered_dict=results_dict)
+        tp_binary_hard = self.tp_detection_and_label(filtered_dict=results_dict)
+                
+        assert len(dt_frame_names) == len(dt_labels) == len(dt_scores) == len(dt_assigned_gt_indices) == len(dt_max_overlaps) == len(dt_assigned_labels) == len(tp_binary_easy) == len(tp_binary_hard)
+        
+        # # save in a csv file
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'l': l, 'w': w, 'h': h, 'theta': theta, 'dt_labels': dt_labels, 'dt_scores': dt_scores, 'dt_assigned_gt_indices': dt_assigned_gt_indices, 'dt_max_overlaps': dt_max_overlaps, 'dt_assigned_labels': dt_assigned_labels, 'tp_binary_easy': tp_binary_easy, 'tp_binary_hard': tp_binary_hard, 'dt_frame_names': dt_frame_names})
+        df.to_csv(osp.join(output_dir, f'dt_results_{iou_level}.csv'), index=False)
+
+        # Part relevant for the ground truth instances
+        gt_frame_names = []
+        gt_labels = results_dict_np['gt_labels']
+        gt_assigned_or_not_binary = results_dict_np['gt_assigned_or_not_binary']
+
+        x = []
+        y = []
+        z = []
+        l = []
+        w = []
+        h = []
+        theta = []
+        
+        for key in self._gt_annos_valid.keys():
+            gt_instance = self._gt_annos_valid[key]
+            x.append(gt_instance.bboxes_3d[:, 0].cpu().numpy())
+            y.append(gt_instance.bboxes_3d[:, 1].cpu().numpy())
+            z.append(gt_instance.bboxes_3d[:, 2].cpu().numpy())
+            l.append(gt_instance.bboxes_3d[:, 3].cpu().numpy())
+            w.append(gt_instance.bboxes_3d[:, 4].cpu().numpy())
+            h.append(gt_instance.bboxes_3d[:, 5].cpu().numpy())
+            theta.append(gt_instance.bboxes_3d[:, 6].cpu().numpy())
+            gt_frame_names += [key] * len(gt_instance.bboxes_3d)
+            
+        x = np.concatenate(x)
+        y = np.concatenate(y)
+        z = np.concatenate(z)
+        l = np.concatenate(l)
+        w = np.concatenate(w)
+        h = np.concatenate(h)
+        theta = np.concatenate(theta)
+        
+        assert len(gt_frame_names) == len(gt_labels) == len(gt_assigned_or_not_binary)
+        
+        # save in a csv file
+        df_gt = pd.DataFrame({'x': x, 'y': y, 'z': z, 'l': l, 'w': w, 'h': h, 'theta': theta, 'gt_labels': gt_labels, 'gt_assigned_or_not_binary': gt_assigned_or_not_binary, 'gt_frame_names': gt_frame_names})
+        df_gt.to_csv(osp.join(output_dir, f'gt_results_{iou_level}.csv'), index=False)
+    
+    def save_dt_positioning(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        dt_tp_binary = self.class_accuracy_requirement_map['easy'](filtered_dict=results_dict)
+        
+        # from _dt_annos_valid save the position of all detections
+        
+        _x = []
+        _y = []
+        _z = []
+        
+        for key in self._dt_annos_valid.keys():
+            dt_instance = self._dt_annos_valid[key]
+            _x.append(dt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(dt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(dt_instance.bboxes_3d[:, 2].cpu().numpy())
+            
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
+        
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'tp': dt_tp_binary.cpu().numpy()})
+        
+        df.to_csv(osp.join(output_dir, 'dt_positioning.csv'), index=False)
+        
+    def save_gt_positioning(self, output_dir: str, iou_level: float):
+        
+        if not iou_level in self.threshold_specific_results_dict.keys():
+            self.val_batch_evaluation(iou_level)
+            
+        results_dict = copy.deepcopy(self.threshold_specific_results_dict[iou_level])
+        
+        gt_assigned_or_not_binary = results_dict['gt_assigned_or_not_binary']
+        
+        _x = []
+        _y = []
+        _z = []
+        
+        for key in self._gt_annos_valid.keys():
+            gt_instance = self._gt_annos_valid[key]
+            _x.append(gt_instance.bboxes_3d[:, 0].cpu().numpy())
+            _y.append(gt_instance.bboxes_3d[:, 1].cpu().numpy())
+            _z.append(gt_instance.bboxes_3d[:, 2].cpu().numpy())
+            
+        x = np.concatenate(_x)
+        y = np.concatenate(_y)
+        z = np.concatenate(_z)
+        
+        df = pd.DataFrame({'x': x, 'y': y, 'z': z, 'assigned': gt_assigned_or_not_binary.cpu().numpy()})
+        
+        df.to_csv(osp.join(output_dir, 'gt_positioning.csv'), index=False)
+      
     
 ####### Helper functions #######
 
@@ -1075,8 +1246,9 @@ def show_projections(key, gt_3d_bboxes, dt_3d_bboxes):
     ax.set_ylim(y_lower, y_upper)
     ax.set_zlim(z_lower, z_upper)
 
-    # Apply the calculated aspect ratio
-    ax.set_aspect('equal')
+    # equal aspect rati
+    ax.set_box_aspect([1, 1, 1])
+
     scale = vertices.flatten()
     ax.auto_scale_xyz(scale, scale, scale)
         
