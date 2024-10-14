@@ -54,6 +54,8 @@ val_evaluator = dict(
     random_viz_keys = None)
 ```
 
+Note that the 'General_3dDet_Metric_MMLab' evaluator is configured to load the authentification key for the WandB account to log to from the [wandb_auth.yaml](/home/cws-ml-lab/mmdetection3d_for_rail/mmdet3d/engine/hooks/wandb_auth.yaml) if the device has not already been configured with the key. Hence, make sure to set the correct WandB key in the authentification file. 
+
 ### New WandB Logger Hook
 To gain oversight over the trained models and the training process, a [Weights&Biases](https://wandb.ai) integration for MMDetection3D was created. This [script](/mmdet3d/engine/hooks/wandb_logger_hook.py) implements a registered hook that logs the training progress per iteration and also per epoch. Addtionally, the WandB logger hook also logs the metrics from the 3D-detection evaluation metrics described above along with the graphs created by that script. In order to access the validation losses, a few changes were made to the MMEngine foundational library. These are elaborated in the corresponding package ([MMEngine_for_rail](https://github.com/nicoscore99/mmengine_for_rail))
 
@@ -72,3 +74,55 @@ custom_hooks = [
              })
 ]
 ```
+
+## WIKI
+
+### How to: Train a model
+
+To train an object detection model, follow the subsequent steps.
+
+1. Generate a configuration file.
+
+    [Here](/home/cws-ml-lab/mmdetection3d_for_rail/configs/centerpoint/centerpoint_voxel01_second_secfpn_generic.py) provides a good example. It is advisable to generate a single, combined file instead of handeling the model, dataset and schedulers in separate files.
+
+    Also make sure to have the validation pipeline with the custom metrics and the [WandB Logger Hook](/home/cws-ml-lab/mmdetection3d_for_rail/mmdet3d/engine/hooks/wandb_logger_hook.py) properly linked. 
+
+2. Run the training script.
+
+    ```bash
+    cd mmdetection3d_for_rail/
+    python3 tools/train.py ./configs/name_of_configuration_file.py
+    ```
+
+### How to: Test a model
+
+Models can be tested using the [test script](/home/cws-ml-lab/mmdetection3d_for_rail/tools/test.py). Run the following command:
+
+```bash
+cd mmdetection3d_for_rail/
+python3 tools/train.py ./configs/name_of_configuration_file.py ./checkpoints/path_to_model_to_test.pth
+```
+
+The test script will run the 'test_dataloader' and 'test_evaluator'. Make sure these are defined in the configuration file. Additionally, it is paramount that the model configuration in the configuration file is exactly identical with the model architecture that was used during training, such that the exact weights are loaded.
+
+
+### How to: Create a Custom Datast
+
+A relatively comprehensive description on how to customize MMDetection3D for new datasets is provided [here](https://mmdetection3d.readthedocs.io/en/dev/tutorials/customize_dataset.html).
+
+Generally, the following steps need to be followed:
+
+1. Register a new dataset. Examples for datasets can be found [here](/home/cws-ml-lab/mmdetection3d_for_rail/mmdet3d/datasets).
+2. Bring your data into the required structure. A good approach is to just use the exact same structure as the KITTI dataset uses - but this can be configured.
+3. Adapt the follwing two scripts as needed:
+
+    - [create_gt_database.py](tools/dataset_converters/create_gt_database.py) This script defined the data loading process for the creation of the ground truth database. The dataloading process needs to match with the structure of the custom dataset. 
+    - [update_infos_to_v2.py](tools/dataset_converters/update_infos_to_v2.py) This is a scirpt that updates the data structure to v1.1.0 of mmdetection3d. Basically you can follow the KITTI structure here and ignore all irrelevante information (e.g. such as 'center_2d' when only LiDAR is used). You should also adjust the METAINFO to the relevant set of classes in your dataset.
+
+        ```
+        METAINFO = {
+            'classes': ('Pedestrian', 'Cyclist', 'RoadVehicle', 'Train'),
+        }
+        ```
+
+4. 

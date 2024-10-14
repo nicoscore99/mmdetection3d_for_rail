@@ -545,15 +545,7 @@ def update_osdar23_infos(pkl_path, out_dir):
     # }
 
     # METAINFO = {
-    #     'classes': ('pedestrian', 'cyclist', 'car', 'train', 'unknown'),
-    # }
-    
-    # METAINFO = {
     #     'classes': ('Pedestrian', 'Cyclist', 'Car'),
-    # }
-    
-    # METAINFO = {
-    #     'classes': ('pedestrian', 'car'),
     # }
     
     METAINFO = {
@@ -579,48 +571,10 @@ def update_osdar23_infos(pkl_path, out_dir):
         # Convert 'points/1_calibration_1.1_018.bin' to 1_calibration_1.1_018.bin
         sample_idx = velodyne_path.split('/')[-1].split('_')[-1]
         temp_data_info['sample_idx'] = sample_idx
-
-        # temp_data_info['images']['CAM0']['cam2img'] = ori_info_dict['calib'][
-        #     'P0'].tolist()
-        # temp_data_info['images']['CAM1']['cam2img'] = ori_info_dict['calib'][
-        #     'P1'].tolist()
-        # temp_data_info['images']['CAM2']['cam2img'] = ori_info_dict['calib'][
-        #     'P2'].tolist()
-        # temp_data_info['images']['CAM3']['cam2img'] = ori_info_dict['calib'][
-        #     'P3'].tolist()
-
-        # temp_data_info['images']['CAM2']['img_path'] = Path(
-        #     ori_info_dict['image']['image_path']).name
-        # h, w = ori_info_dict['image']['image_shape']
-        # temp_data_info['images']['CAM2']['height'] = h
-        # temp_data_info['images']['CAM2']['width'] = w
         temp_data_info['lidar_points']['num_pts_feats'] = ori_info_dict[
             'point_cloud']['num_features']
         temp_data_info['lidar_points']['lidar_path'] = Path(
             ori_info_dict['point_cloud']['velodyne_path']).name
-
-        # rect = ori_info_dict['calib']['R0_rect'].astype(np.float32)
-        # Trv2c = ori_info_dict['calib']['Tr_velo_to_cam'].astype(np.float32)
-        # lidar2cam = rect @ Trv2c
-        # temp_data_info['images']['CAM2']['lidar2cam'] = lidar2cam.tolist()
-        # temp_data_info['images']['CAM0']['lidar2img'] = (
-        #     ori_info_dict['calib']['P0'] @ lidar2cam).tolist()
-        # temp_data_info['images']['CAM1']['lidar2img'] = (
-        #     ori_info_dict['calib']['P1'] @ lidar2cam).tolist()
-        # temp_data_info['images']['CAM2']['lidar2img'] = (
-        #     ori_info_dict['calib']['P2'] @ lidar2cam).tolist()
-        # temp_data_info['images']['CAM3']['lidar2img'] = (
-        #     ori_info_dict['calib']['P3'] @ lidar2cam).tolist()
-
-        # temp_data_info['lidar_points']['Tr_velo_to_cam'] = Trv2c.tolist()
-
-        # for potential usage
-        # temp_data_info['images']['R0_rect'] = ori_info_dict['calib'][
-        #     'R0_rect'].astype(np.float32).tolist()
-        # temp_data_info['lidar_points']['Tr_imu_to_velo'] = ori_info_dict[
-        #     'calib']['Tr_imu_to_velo'].astype(np.float32).tolist()
-
-        # cam2img = ori_info_dict['calib']['P2']
 
         anns = ori_info_dict.get('annos', None)
         ignore_class_name = set()
@@ -647,11 +601,6 @@ def update_osdar23_infos(pkl_path, out_dir):
                 src = np.array([0.5, 1.0, 0.5])
 
                 center_3d = loc + dims * (dst - src)
-                # center_2d = points_cam2img(
-                #     center_3d.reshape([1, 3]), cam2img, with_depth=True)
-                # center_2d = center_2d.squeeze().tolist()
-                # empty_instance['center_2d'] = center_2d[:2]
-                # empty_instance['depth'] = center_2d[2]
 
                 gt_bboxes_3d = np.concatenate([loc, dims, rots]).tolist()
                 empty_instance['bbox_3d'] = gt_bboxes_3d
