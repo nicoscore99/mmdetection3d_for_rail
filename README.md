@@ -20,22 +20,9 @@ The [MMDetection3D](https://github.com/open-mmlab/mmdetection3d) package is clos
 The following is a list of the relevant changes that I have made on top of the [MMDetection3D](https://github.com/open-mmlab/mmdetection3d) package:
 
 ### Custom Datasets
-For this project, the **Open Sensor Data For Rail 2023** (subsequently *OSDaR23*) dataset was integrated as a custom dataset. Find more information on the [OSDaR23 dataset](https://data.fid-move.de/dataset/osdar23). This happens by conversion of the OSDaR23 data fromat into the format of the KITTI dataset such that for all subsequent tasks (visualizations, training, testing, etc.) the standard MMDetection3D functionality can be used. See here how OSDaR23 can be integrated.
+For this project, the **Open Sensor Data For Rail 2023** (subsequently *OSDaR23*) dataset was integrated as a custom dataset. Find more information on the [OSDaR23 dataset](https://data.fid-move.de/dataset/osdar23). This happens by conversion of the OSDaR23 data fromat into the format of the KITTI dataset such that for all subsequent tasks (visualizations, training, testing, etc.) the standard MMDetection3D functionality can be used.
 
 The same process can be used for any 3D data labeled with the web-based labelling service [Segments.ai](https://segments.ai/). Using the MMDetection3D package functionality on self-labeled data from Segments.ai required converting the .json release-file into KITTI type labels. See this [conversion script](/home/cws-ml-lab/mmdetection3d_for_rail/tools/dataset_converters/robosense_m1_plus_sequences_kitti_castor.py) to do so.
-
-Here's an example of how to transform the OSDaR23 dataset in a KITTI compatible format:
-
-```bash
-# Transfer file structure and create label-files
-python3 tools/dataset_converters/osdar23_kitti_castor.py ./data/osdar23 ./data/osdar23
-
-# Generate annotation .pkl files
-python3 tools/create_data.py osdar23 --root-path ./data/osdar23 --out-dir ./data/osdar23
-
-# Visualize and see in transform was successful
-python3 tools/misc/browse_dataset.py configs/base/datasets/osdar23-3d-3class.py --task lidar_det
-```
 
 ### 3D Detection Evaluation Metric
 The 3D evaluation metrics provided by MMDetection3D could not be adopted for the custom datasets used during this project. Thus, for this project a new evaluation script that is dataset-independent and compatible with both the per-default integrated datasets as well as any custom datasets. The [General_3dDet_Metric_MMLab](mmdet3d/evaluation/metrics/general_3ddet_metric_mmlab.py) class is set up to evaluate Mean Average Precision (mAP), Precision and Recall over the complete test set. Per default, it evaluates the mAP at 40 reall positions, as suggested by the KITTI dataset challenge.
@@ -76,6 +63,17 @@ custom_hooks = [
 ```
 
 ## WIKI
+
+### How to: Install
+
+The [MMDetection3d documentation](https://mmdetection3d.readthedocs.io/en/latest/get_started.html) suggests installing MMDetection3D inside a conda environment using [openmim](https://openmim.readthedocs.io/en/latest/). However, this complicates using MMDetection3D with ROS2. 
+
+I suggest to install MMDetection3D and MMEngine natively wit pip:
+
+```bash
+cd mmdetection3d_for_rail/
+pip3 install .
+```
 
 ### How to: Train a model
 
@@ -125,4 +123,17 @@ Generally, the following steps need to be followed:
         }
         ```
 
-4. 
+4. Use your own [conversion script](/home/cws-ml-lab/mmdetection3d_for_rail/tools/dataset_converters/osdar23_kitti_castor.py) and the script [create_data.py](/home/cws-ml-lab/mmdetection3d_for_rail/tools/create_data.py) to convert the data into a KITTI-compatible format.
+
+    Here's an example of how to transform the OSDaR23 dataset in a KITTI compatible format:
+
+    ```bash
+    # Transfer file structure and create label-files
+    python3 tools/dataset_converters/osdar23_kitti_castor.py ./data/osdar23 ./data/osdar23
+
+    # Generate annotation .pkl files
+    python3 tools/create_data.py osdar23 --root-path ./data/osdar23 --out-dir ./data/osdar23
+
+    # Visualize and see in transform was successful
+    python3 tools/misc/browse_dataset.py configs/base/datasets/osdar23-3d-3class.py --task lidar_det
+    ```
