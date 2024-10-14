@@ -98,7 +98,7 @@ Models can be tested using the [test script](/home/cws-ml-lab/mmdetection3d_for_
 
 ```bash
 cd mmdetection3d_for_rail/
-python3 tools/train.py ./configs/name_of_configuration_file.py ./checkpoints/path_to_model_to_test.pth
+python3 tools/test.py ./configs/name_of_configuration_file.py ./checkpoints/path_to_model_to_test.pth
 ```
 
 The test script will run the 'test_dataloader' and 'test_evaluator'. Make sure these are defined in the configuration file. Additionally, it is paramount that the model configuration in the configuration file is exactly identical with the model architecture that was used during training, such that the exact weights are loaded.

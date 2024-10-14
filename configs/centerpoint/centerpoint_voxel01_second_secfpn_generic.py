@@ -325,7 +325,7 @@ val_evaluator = dict(
     random_viz_keys = None)
 
 test_dataloader = val_dataloader
-f = val_evaluator
+test_evaluator = val_evaluator
 
 vis_backends = [dict(type='LocalVisBackend')]
 visualizer = dict(
